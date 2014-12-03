@@ -100,6 +100,39 @@ static NSString *const CDTReplicatorErrorDomain = @"CDTReplicatorErrorDomain";
 
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
+- (NSString*) cleanRemote
+{
+    NSURL *remote = self.tdReplicator.remote;
+    return [NSString stringWithFormat:@"%@://%@:****@%@%@", remote.scheme, remote.user,
+        remote.host, remote.path ];
+}
+
+- (NSString*) description
+{
+    NSString *replicationType;
+    NSString *source;
+    NSString *target;
+    
+    if ( self.tdReplicator.isPush ) {
+        replicationType = @"push" ;
+        source = self.tdReplicator.db.name;
+        target = [self cleanRemote];
+        
+    }
+    else {
+        replicationType = @"pull" ;
+        source = [self cleanRemote];
+        target = self.tdReplicator.db.name;
+    }
+    
+    NSString *fullinfo = [NSString stringWithFormat: @"CDTReplicator %@, source: %@, target: %@ "
+                          @"filter name: %@, filter parameters %@, unique replication session "
+                          @"ID: %@", replicationType, source, target, self.tdReplicator.filterName,
+                          self.tdReplicator.filterParameters, self.tdReplicator.sessionID];
+    
+    return fullinfo;
+}
+
 #pragma mark Lifecycle
 
 - (void)start { [self startWithError:nil]; }
