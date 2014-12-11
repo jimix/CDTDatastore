@@ -118,7 +118,7 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
 }
 
 - (NSString*) description {
-    return $sprintf(@"%@ [%@://%@:****@%@\%@]", [self class], _remote.scheme, _remote.user,
+    return $sprintf(@"%@ [%@://%@:****@%@%@]", [self class], _remote.scheme, _remote.user,
                     _remote.host, _remote.path);
 }
 
@@ -213,22 +213,6 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
                                                  name: TD_DatabaseWillBeDeletedNotification
                                                object: _db];
 
-    __weak TDReplicator *weakSelf = self;
-    
-    [self queue:^{
-        __strong TDReplicator *strongSelf = weakSelf;
-        @synchronized(strongSelf) {
-            if(strongSelf.cancelReplicator){
-                return;
-            }
-            strongSelf.replicatorStarted = YES;
-        }
-        
-        CDTLogInfo(CDTREPLICATION_LOG_CONTEXT, @"ReplicatorManager: %@ (%@) was queued.",
-                [strongSelf class], strongSelf.sessionID );
-        
-        [strongSelf startReplicatorTasks];
-    }];
 }
 
 - (BOOL) cancelIfNotStarted
@@ -262,7 +246,16 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
         CFRelease(source);
 #endif
         
-        // Now run:
+        @synchronized(self) {
+            if(self.cancelReplicator){
+                return;
+            }
+            self.replicatorStarted = YES;
+        }
+        
+        [self startReplicatorTasks];
+        
+        // Now run until stopped:
         while (!_stopRunLoop && [[NSRunLoop currentRunLoop] runMode: NSDefaultRunLoopMode
                                                          beforeDate: [NSDate dateWithTimeIntervalSinceNow:0.1]])
             ;
@@ -271,10 +264,6 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
     }
 }
 
-- (void) queue: (void(^)())block {
-    Assert(_replicatorThread, @"-queue: called after -stop");
-    MYOnThread(_replicatorThread, block);
-}
 
 // Notified that our database is being deleted; stop replication
 - (void) databaseWasDeleted: (NSNotification*)n {
