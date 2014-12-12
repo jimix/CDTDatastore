@@ -14,13 +14,17 @@
 
 + (void)initialize
 {
-    [DDLog addLogger:[DDTTYLogger sharedInstance]];
-    CDTChangeLogLevel(CDTINDEX_LOG_CONTEXT, DDLogLevelWarning);
-    CDTChangeLogLevel(CDTREPLICATION_LOG_CONTEXT, DDLogLevelWarning);
-    CDTChangeLogLevel(CDTDATASTORE_LOG_CONTEXT, DDLogLevelWarning);
-    CDTChangeLogLevel(CDTDOCUMENT_REVISION_LOG_CONTEXT, DDLogLevelWarning);
-    CDTChangeLogLevel(CDTTD_REMOTE_REQUEST_CONTEXT, DDLogLevelWarning);
-    CDTChangeLogLevel(CDTTD_JSON_CONTEXT, DDLogLevelWarning);
+    
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [DDLog addLogger:[DDTTYLogger sharedInstance]];
+        CDTChangeLogLevel(CDTINDEX_LOG_CONTEXT, DDLogLevelWarning);
+        CDTChangeLogLevel(CDTREPLICATION_LOG_CONTEXT, DDLogLevelWarning);
+        CDTChangeLogLevel(CDTDATASTORE_LOG_CONTEXT, DDLogLevelWarning);
+        CDTChangeLogLevel(CDTDOCUMENT_REVISION_LOG_CONTEXT, DDLogLevelWarning);
+        CDTChangeLogLevel(CDTTD_REMOTE_REQUEST_CONTEXT, DDLogLevelWarning);
+        CDTChangeLogLevel(CDTTD_JSON_CONTEXT, DDLogLevelWarning);
+    });
 }
 
 @end
