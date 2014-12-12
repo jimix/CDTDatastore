@@ -29,6 +29,14 @@
 
 @implementation CDTTodoReplicator
 
+-(id) init
+{
+    self = [super init];
+    if (self) {
+        _replicators = [[NSMutableArray alloc] init];
+    }
+    return self;
+}
 
 -(NSURL*)replicatorURL {
     // Shared database for demo purposes -- anyone can put stuff here...
@@ -123,8 +131,9 @@
         return;
     }
 
-    [self.replicators addObject:replicator];
-
+    @synchronized(self){
+        [self.replicators addObject:replicator];
+    }
 }
 
 -(void)log:(NSString*)format, ... {
@@ -136,13 +145,6 @@
     NSLog(@"%@", message);
 }
 
--(NSMutableArray*)replicators
-{
-    if (!_replicators) {
-        _replicators = [[NSMutableArray alloc] init];
-    }
-    return _replicators;
-}
 
 #pragma mark CDTReplicatorDelegate
 
@@ -150,16 +152,18 @@
 {
     
     [self log:@"%@ complete", replicator];
-    
-    [self.replicators removeObject:replicator];
+    @synchronized(self){
+        [self.replicators removeObject:replicator];
+    }
 }
 
 -(void)replicatorDidError:(CDTReplicator *)replicator info:(NSError *)info
 {
     
     [self log:@"%@ error: %@", replicator, info];
-    
-    [self.replicators removeObject:replicator];
+    @synchronized(self) {
+        [self.replicators removeObject:replicator];
+    }
 }
 
 -(void)replicatorDidChangeState:(CDTReplicator *)replicator
