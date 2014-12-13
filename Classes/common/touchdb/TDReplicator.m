@@ -213,6 +213,23 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
                                                  name: TD_DatabaseWillBeDeletedNotification
                                                object: _db];
 
+    [self performSelector:@selector(checkIfNotCanceledThenStart)
+                 onThread:_replicatorThread
+               withObject:nil
+            waitUntilDone:NO];
+    
+}
+
+-(void) checkIfNotCanceledThenStart
+{
+    @synchronized(self) {
+        if(self.cancelReplicator){
+            return;
+        }
+        self.replicatorStarted = YES;
+    }
+    
+    [self startReplicatorTasks];
 }
 
 - (BOOL) cancelIfNotStarted
@@ -245,15 +262,6 @@ NSString* TDReplicatorStartedNotification = @"TDReplicatorStarted";
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
         CFRelease(source);
 #endif
-        
-        @synchronized(self) {
-            if(self.cancelReplicator){
-                return;
-            }
-            self.replicatorStarted = YES;
-        }
-        
-        [self startReplicatorTasks];
         
         // Now run until stopped:
         while (!_stopRunLoop && [[NSRunLoop currentRunLoop] runMode: NSDefaultRunLoopMode
