@@ -64,4 +64,11 @@ extern NSString *const CDTDatastoreErrorDomain;
  */
 - (BOOL)deleteDatastoreNamed:(NSString *)name error:(NSError *__autoreleasing *)error;
 
+/**
+ 
+ Lists all datastores that this manager instance manages
+ 
+ */
+- (NSArray* /* NSString */)listDatastores;
+
 @end
