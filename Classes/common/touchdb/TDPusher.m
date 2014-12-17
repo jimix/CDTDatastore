@@ -187,13 +187,15 @@
 
     // Call _revs_diff on the target db:
     [self asyncTaskStarted];
+    __weak TDPusher *weakSelf = self;
     [self sendAsyncRequest:@"POST"
                       path:@"_revs_diff"
                       body:diffs
               onCompletion:^(NSDictionary* results, NSError* error) {
+                  __strong TDPusher *strongSelf = weakSelf;
                   if (error) {
-                      self.error = error;
-                      [self revisionFailed];
+                      strongSelf.error = error;
+                      [strongSelf revisionFailed];
                   } else if (results.count) {
                       // Go through the list of local changes again, selecting the ones the
                       // destination server
@@ -208,17 +210,18 @@
                               NSDictionary* revResults = results[rev.docID];
                               NSArray* missing = revResults[@"missing"];
                               if (![missing containsObject:[rev revID]]) {
-                                  [self removePending:rev];
+                                  [strongSelf removePending:rev];
                                   return nil;
                               }
 
                               // Get the revision's properties:
                               TDContentOptions options = kTDIncludeAttachments | kTDIncludeRevs;
                               if (!_dontSendMultipart) options |= kTDBigAttachmentsFollow;
-                              if ([_db loadRevisionBody:rev options:options] >= 300) {
+                              TDStatus status =[_db loadRevisionBody:rev options:options];
+                              if (status >= 300 || status == 0) {
                                   CDTLogWarn(CDTREPLICATION_LOG_CONTEXT,
-                                          @"%@: Couldn't get local contents of %@", self, rev);
-                                  [self revisionFailed];
+                                          @"%@: Couldn't get local contents of %@", strongSelf, rev);
+                                  [strongSelf revisionFailed];
                                   return nil;
                               }
                               properties = rev.properties;
@@ -240,7 +243,7 @@
                                                            beforeRevPos:0
                                                       attachmentsFollow:YES];
                                       properties = rev.properties;
-                                      if ([self uploadMultipartRevision:rev]) {
+                                      if ([strongSelf uploadMultipartRevision:rev]) {
                                           return nil;
                                       }
                                   } else {
@@ -257,7 +260,7 @@
                                       properties = rev.properties;
                                       // If the rev has huge attachments, send it under separate
                                       // cover:
-                                      if (!_dontSendMultipart && [self uploadMultipartRevision:rev])
+                                      if (!_dontSendMultipart && [strongSelf uploadMultipartRevision:rev])
                                           return nil;
                                   }
                               }
@@ -268,13 +271,13 @@
                       }];
 
                       // Post the revisions to the destination:
-                      [self uploadBulkDocs:docsToSend changes:revsToSend];
+                      [strongSelf uploadBulkDocs:docsToSend changes:revsToSend];
 
                   } else {
                       // None of the revisions are new to the remote
-                      for (TD_Revision* rev in changes.allRevisions) [self removePending:rev];
+                      for (TD_Revision* rev in changes.allRevisions) [strongSelf removePending:rev];
                   }
-                  [self asyncTasksFinished:1];
+                  [strongSelf asyncTasksFinished:1];
               }];
 }
 
