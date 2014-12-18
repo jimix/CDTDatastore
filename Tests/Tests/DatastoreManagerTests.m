@@ -26,7 +26,7 @@
         [self.factory datastoreNamed:dsName error:nil];
     }
     
-    NSArray * datastores = [self.factory listDatastores];
+    NSArray * datastores = [self.factory allDatastores];
     STAssertEquals((NSUInteger)5, [datastores count],
                    @"Wrong number of datastores returned, expected 5 got %d",
                    [datastores count]);
@@ -40,7 +40,7 @@
 - (void) testListDatastoresWithSlash {
     
     [self.factory datastoreNamed:@"adatabase/withaslash" error:nil];
-    NSArray * datastores = [self.factory listDatastores];
+    NSArray * datastores = [self.factory allDatastores];
     STAssertEquals((NSUInteger)1, [datastores count],
                    @"Wrong number of datastores returned, expected 1 got %d",
                    [datastores count]);
@@ -49,7 +49,7 @@
 }
 
 -(void) testListEmptyDatastores {
-    NSArray * datastores = [self.factory listDatastores];
+    NSArray * datastores = [self.factory allDatastores];
     STAssertEquals((NSUInteger)0, [datastores count],
                    @"Wrong number of datastores returned, expected 0 got %d",
                    [datastores count]);

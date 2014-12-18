@@ -69,6 +69,6 @@ extern NSString *const CDTDatastoreErrorDomain;
  Lists all datastores that this manager instance manages
  
  */
-- (NSArray* /* NSString */)listDatastores;
+- (NSArray* /* NSString */)allDatastores;
 
 @end

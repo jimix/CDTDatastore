@@ -96,7 +96,7 @@ NSString *const CDTExtensionsDirName = @"_extensions";
     }
 }
 
-- (NSArray* /* NSString */) listDatastores
+- (NSArray* /* NSString */) allDatastores
 {
     return [self.manager allDatabaseNames];
 }
