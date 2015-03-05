@@ -12,74 +12,11 @@
 extern NSString *const CDTISErrorDomain;
 extern NSString *const CDTISException;
 
-/**
- *  Block of code to be executed as communication with backing store progresses.
- *
- *  @param end       YES: communication is finished.
- *                   NO: communication has ended.
- *  @param processed Number of backing store transactions processed
- *  @param total     Total number of transactions to be completed
- *  @param err       Optional error if `end` is `YES`
- */
-typedef void (^CDTISProgressBlock)(BOOL end, NSInteger processed, NSInteger total, NSError *err);
-
-typedef NS_ENUM(NSInteger, CDTISReplicateDirection) {
-    push = 0,
-    pull = 1
-};
-
 @interface CDTIncrementalStore : NSIncrementalStore
 
 @property (nonatomic, strong) CDTDatastore *datastore;
 
 - (NSInteger)propertyTypeFromDoc:(NSDictionary *)body withName:(NSString *)name;
-
-/**
-*  Cause the store to push to the remote database
-*  > *Note*: does not block
-*
-*  @param error    Error if push could not be initiated
-*  @param progress @See CDTISProgressBlock
-*
-*  @return YES/NO with optional error
-*/
-- (BOOL)pushToRemote:(NSError **)error withProgress:(CDTISProgressBlock)progress;
-
-/**
- *  Cause the store to pull from the remote database
- *  > *Note*: does not block
- *
- *  @param error    Error if push could not be initiated
- *  @param progress @See CDTISProgressBlock
- *
- *  @return YES/NO with optional error
- */
-- (BOOL)pullFromRemote:(NSError **)error withProgress:(CDTISProgressBlock)progress;
-
-/**
- *  Convenience function where direction is an argument.
- *  Use this when you find that the `progress` block is the same for push and
- *  pull.
- *
- *  @param direction Which direction should the replication be done in
- *  @param error     Error if replication could not be initiated
- *  @param progress  @See CDTISProgressBlock
- *
- *  @return YES/NO with optional error
- */
-- (BOOL)replicateInDirection:(CDTISReplicateDirection)direction withError:(NSError **)error withProgress:(CDTISProgressBlock)progress;
-
-/**
- *  Define the remote backing store of an existing datastore
- *
- *  @param remoteURL URL to database
- */
-- (BOOL)linkReplicators:(NSURL *)remoteURL;
-
-/**
- *  Unlink the backing stores
- */
-- (void)unlinkReplicators;
 
 /**
  *  Returns the string that was used to register this incremental store
@@ -106,13 +43,6 @@ typedef NS_ENUM(NSInteger, CDTISReplicateDirection) {
  */
 + (NSArray *)storesFromCoordinator:(NSPersistentStoreCoordinator *)coordinator;
 
-/**
- *  The databaseName is exposed in order to be able to identify the different
- *  CDTIncrementalStore objects. @see +storesFromCoordinator:coordinator
- */
-@property (nonatomic, strong) NSString *databaseName;
-
-
 typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
     CDTISErrorBadURL = 1,
     CDTISErrorBadPath,
@@ -128,5 +58,35 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
     CDTISErrorSyncBusy,
     CDTISErrorNotSupported
 };
+
+/**
+ *  The databaseName is exposed in order to be able to identify the different
+ *  CDTIncrementalStore objects. @see +storesFromCoordinator:coordinator
+ */
+@property (nonatomic, strong) NSString *databaseName;
+
+/**
+ * Create a CDTReplicator object set up to replicate changes from the
+ * local datastore to a remote database.
+ *
+ *  @param remoteURL the remote server URL to which the data is replicated.
+ *  @param error     report error information
+ *
+ *  @return a CDTReplicator instance which can be used to start and
+ *  stop the replication itself, or `nil` on error.
+ */
+- (CDTReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error;
+
+/**
+ * Create a CDTReplicator object set up to replicate changes from a remote database to the
+ * local datastore.
+ *
+ *  @param remoteURL the remote server URL to which the data is replicated.
+ *  @param error     report error information
+ *
+ *  @return a CDTReplicator instance which can be used to start and
+ *  stop the replication itself, or `nil` on error.
+*/
+- (CDTReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error;
 
 @end
