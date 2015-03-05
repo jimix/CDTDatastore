@@ -99,49 +99,30 @@ NSURL *linkURL = [NSURL URLWithString:databaseURI];
 
 ### Replication
 
-The act of [replication] can be performed by the
-`-pushToRemote:withProgress:` and
-`-pullFromRemote:withProgress:`. These methods return immediately
-reporting any initial error but do the actual work on another thread.
-They employ [code blocks] to provide feedback to the application if
-launched successfully.  Example use in iOS using `UIProgressView`:
+The act of [replication] can be performed by the using the
+CloudantSync replication interfaces described in [Replication].
+
+In order to perform a push or a pull you need to obtain a
+`CDTReplicator` that can to the operation. These are provided by
+`-replicatorThatPushesToURL:withError:` and
+`-replicatorThatPullsFromURL:withError:`. From this point you can
+assign use the replicator as instructed in [Replication], including
+setting a delegate.
+
+A simple example:
 
 ```objc
 NSError *err = nil;
-UIProgressView * __weak weakProgress = // some UIProgressView object;
-BOOL pull = [myIS pullFromRemote:&err
-                    withProgress:^(BOOL end, NSInteger processed, NSInteger total, NSError *e) {
-                        if (end) {
-					        if (e) // ... deal with error
-						    [weakProgress setProgress:1.0 animated:YES];
-					    } else {
-					        [weakProgress setProgress:(float)processed / (float)total animated:YES];
-                        }
-                    }];
-if (!pull) // .. deal with error in `err`
-```
+CDTIncrementalStore *myIS = [self getIncrementalStore];
+CDTReplicator *puller = [myIS replicatorThatPullsFromURL:self.remoteURL withError:&err];
 
-> ***Note***: `withProgress` can be `nil`
-
-Another example that just waits until the replicator is done:
-
-```objc
-NSError *err = nil;
-NSError * __block pushErr = nil;
-BOOL __block done = NO;
-BOOL push = [is pushToRemote:&err withProgress:^(BOOL end, NSInteger processed, NSInteger total, NSError *e) {
-    if (end) {
-        if (e) pushErr = e;
-        done = YES;
-    } else {
-        count = processed;
+if (![puller startWithError:&err]) {
+    [self reportIssue:@"Pull Failed with error: %@", err];
+    self.syncButton.enabled = self.serverVerified;
+} else {
+    while (puller.isActive) {
+        [NSThread sleepForTimeInterval:1.0f];
     }
-}];
-
-if (!push) // .. deal with error in `err`
-
-while (!done) {
-    [NSThread sleepForTimeInterval:1.0f];
 }
 ```
 

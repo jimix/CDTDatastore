@@ -198,33 +198,6 @@
     return store;
 }
 
-- (NSInteger)replicate:(CDTISReplicateDirection)direction
-{
-    CDTIncrementalStore *is = [self getIncrementalStore];
-    NSError *err = nil;
-    NSError *__block repErr = nil;
-    BOOL __block done = NO;
-    NSInteger __block count = 0;
-    BOOL rep =
-        [is replicateInDirection:direction
-                       withError:&err
-                    withProgress:^(BOOL end, NSInteger processed, NSInteger total, NSError *e) {
-                        if (end) {
-                            if (e) repErr = e;
-                            done = YES;
-                        } else {
-                            count = processed;
-                        }
-                    }];
-    XCTAssertTrue(rep, @"call to replicate failed");
-    XCTAssertNil(err, @"call to replicate caused error: %@", err);
-    while (!done) {
-        [NSThread sleepForTimeInterval:1.0f];
-    }
-    XCTAssertNil(repErr, @"error while replicating: %@", repErr);
-    return count;
-}
-
 - (void)setUp
 {
     [super setUp];
@@ -296,6 +269,38 @@
     }
 }
 
+- (NSUInteger)pushme
+{
+    NSError *err = nil;
+    CDTIncrementalStore *myIS = [self getIncrementalStore];
+    CDTReplicator *pusher = [myIS replicatorThatPushesToURL:self.primaryRemoteDatabaseURL
+                                                  withError:&err];
+
+    XCTAssertNotNil(pusher, @"Pusher create faile with: %@", err);
+
+    XCTAssertTrue([pusher startWithError:&err], @"Push Failed with error: %@", err);
+    while (pusher.isActive) {
+        [NSThread sleepForTimeInterval:1.0f];
+    }
+    return pusher.changesTotal;
+}
+
+- (NSUInteger)pullme
+{
+    NSError *err = nil;
+    CDTIncrementalStore *myIS = [self getIncrementalStore];
+    CDTReplicator *puller = [myIS replicatorThatPullsFromURL:self.primaryRemoteDatabaseURL
+                                                   withError:&err];
+
+    XCTAssertNotNil(puller, @"Puller create faile with: %@", err);
+
+    XCTAssertTrue([puller startWithError:&err], @"Pull Failed with error: %@", err);
+    while (puller.isActive) {
+        [NSThread sleepForTimeInterval:1.0f];
+    }
+    return puller.changesTotal;
+}
+
 - (void)testCoreDataPushPull
 {
     int max = 100;
@@ -309,8 +314,8 @@
     /**
      *  Push
      */
-    NSInteger count = [self replicate:push];
 
+    NSInteger count = [self pushme];
     XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
 
     [self removeLocalDatabase];
@@ -334,7 +339,8 @@
     moc = self.managedObjectContext;
     XCTAssertNotNil(moc, @"could not create Context");
 
-    count = [self replicate:pull];
+
+    count = [self pullme];
     XCTAssertTrue(count == docs, @"pull: unexpected processed objects: %@ != %d", @(count), docs);
 
     /**
@@ -372,7 +378,7 @@
     int docs = max + 1;
 
     // push
-    NSInteger count = [self replicate:push];
+    NSInteger count = [self pushme];
     XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
 
     [self removeLocalDatabase];
@@ -381,7 +387,7 @@
     moc = [self createNumbersAndSave:max];
 
     // now pull
-    count = [self replicate:pull];
+    count = [self pullme];
     XCTAssertTrue(count == docs, @"pull: unexpected processed objects: %@ != %d", @(count), docs);
 
     // Read it back
@@ -505,7 +511,7 @@
     count = [results count];
     XCTAssertTrue(count == max, @"fetch: unexpected processed objects: %@ != %d", @(count), max);
 
-    count = [self replicate:push];
+    count = [self pushme];
     XCTAssertTrue(count == docs + max, @"push: unexpected processed objects: %@ != %d", @(count),
                   docs + max);
 }
