@@ -22,14 +22,11 @@
 @end
 
 #pragma mark - properties
-@interface CDTIncrementalStore () <CDTReplicatorDelegate>
+@interface CDTIncrementalStore ()
 
 @property (nonatomic, strong) CDTDatastoreManager *manager;
 @property (nonatomic, strong) NSURL *localURL;
 @property (nonatomic, strong) NSURL *remoteURL;
-@property (nonatomic, strong) CDTReplicator *puller;
-@property (nonatomic, strong) CDTReplicator *pusher;
-@property (copy) CDTISProgressBlock progressBlock;
 @property (nonatomic, strong) CDTISObjectModel *objectModel;
 
 /**
@@ -1074,200 +1071,6 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
     return [NSDictionary dictionaryWithDictionary:values];
 }
 
-#pragma mark - Push/Pull with Remote methods
-
-- (BOOL)commWithRemote:(CDTReplicator *)rep
-                 error:(NSError **)error
-          withProgress:(CDTISProgressBlock)progress
-{
-    NSError *err = nil;
-
-    CDTReplicatorState state = rep.state;
-    // we can only start from pending
-    if (state != CDTReplicatorStatePending) {
-        NSString *stateName = nil;
-        switch (state) {
-            case CDTReplicatorStatePending:
-                break;
-            case CDTReplicatorStateComplete:
-                stateName = @"CDTReplicatorStateComplete";
-                break;
-            case CDTReplicatorStateError:
-                stateName = @"CDTReplicatorStateError";
-                break;
-            case CDTReplicatorStateStopped:
-                stateName = @"CDTReplicatorStateStopped";
-                break;
-            default:
-                stateName = [NSString stringWithFormat:@"Unknown replicator state: %@", @(state)];
-                break;
-        }
-        if (error) {
-            NSString *s =
-                [NSString localizedStringWithFormat:@"Replicator in state: %@", stateName];
-
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorSyncBusy
-                                     userInfo:@{NSLocalizedFailureReasonErrorKey : s}];
-        }
-        return NO;
-    }
-
-    if (self.progressBlock) {
-        if (error) {
-            NSString *s =
-                [NSString localizedStringWithFormat:@"Replicator comm already in progress"];
-
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorSyncBusy
-                                     userInfo:@{NSLocalizedFailureReasonErrorKey : s}];
-        }
-        return NO;
-    }
-    self.progressBlock = progress;
-
-    if ([rep startWithError:&err]) {
-        // The delegates should reset self.progressBlock
-        return YES;
-    }
-    if (err) {
-        CDTLogWarn(CDTREPLICATION_LOG_CONTEXT, @"%@: Replicator: start: %@: %@", CDTISType,
-                   [self cleanURL:self.remoteURL], err);
-    }
-    self.progressBlock = nil;
-    return NO;
-}
-
-- (BOOL)pushToRemote:(NSError **)error
-        withProgress:
-            (void (^)(BOOL last, NSInteger processed, NSInteger total, NSError *err))progress;
-{
-    if (!self.pusher) {
-        if (error) {
-            NSString *s = [NSString localizedStringWithFormat:@"There is no remote defined"];
-
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorNoRemoteDB
-                                     userInfo:@{NSLocalizedFailureReasonErrorKey : s}];
-        }
-        return NO;
-    }
-    return [self commWithRemote:self.pusher error:error withProgress:progress];
-}
-
-- (BOOL)pullFromRemote:(NSError **)error
-          withProgress:
-              (void (^)(BOOL last, NSInteger processed, NSInteger total, NSError *err))progress;
-{
-    if (!self.puller) {
-        if (error) {
-            NSString *s = [NSString localizedStringWithFormat:@"There is no remote defined"];
-
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorNoRemoteDB
-                                     userInfo:@{NSLocalizedFailureReasonErrorKey : s}];
-        }
-        return NO;
-    }
-
-    return [self commWithRemote:self.puller error:error withProgress:progress];
-}
-
-- (BOOL)replicateInDirection:(CDTISReplicateDirection)direction
-                   withError:(NSError **)error
-                withProgress:(CDTISProgressBlock)progress;
-{
-    if (direction == push) {
-        return [self pushToRemote:error withProgress:progress];
-    }
-    return [self pullFromRemote:error withProgress:progress];
-}
-
-/**
- *  configure the replicators
- *
- *  @param remoteURL remoteURL
- *  @param manager   manager
- *  @param datastore datastore
- *
- *  @return YES/NO. If `NO` then the caller should continue with local database
- *          only.
- */
-- (BOOL)setupReplicators:(NSURL *)remoteURL
-                 manager:(CDTDatastoreManager *)manager
-               datastore:(CDTDatastore *)datastore
-{
-    NSError *err = nil;
-
-    // If remoteURL has a host component, then we have a replication target
-    if (![remoteURL host]) {
-        CDTLogInfo(CDTREPLICATION_LOG_CONTEXT, @"%@: no host component, so no replication",
-                   CDTISType);
-        return NO;
-    }
-
-    NSString *clean = [self cleanURL:remoteURL];
-
-    CDTReplicatorFactory *repFactory =
-        [[CDTReplicatorFactory alloc] initWithDatastoreManager:manager];
-    if (!repFactory) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
-                    CDTISType, clean);
-        return NO;
-    }
-
-    CDTPushReplication *pushRep =
-        [CDTPushReplication replicationWithSource:datastore target:remoteURL];
-    if (!pushRep) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create push replication object",
-                    CDTISType, clean);
-        return NO;
-    }
-
-    CDTReplicator *pusher = [repFactory oneWay:pushRep error:&err];
-    if (!pusher) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for push: %@",
-                    CDTISType, clean, err);
-        return NO;
-    }
-
-    CDTPullReplication *pullRep =
-        [CDTPullReplication replicationWithSource:remoteURL target:datastore];
-    if (!pullRep) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create pull replication object",
-                    CDTISType, clean);
-        return NO;
-    }
-
-    CDTReplicator *puller = [repFactory oneWay:pullRep error:&err];
-    if (!puller) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for pull: %@",
-                    CDTISType, clean, err);
-        return NO;
-    }
-
-    self.remoteURL = remoteURL;
-
-    self.puller = puller;
-    puller.delegate = self;
-
-    self.pusher = pusher;
-    pusher.delegate = self;
-
-    return YES;
-}
-
-- (BOOL)linkReplicators:(NSURL *)remoteURL
-{
-    return [self setupReplicators:remoteURL manager:self.manager datastore:self.datastore];
-}
-
-- (void)unlinkReplicators
-{
-    self.pusher = nil;
-    self.puller = nil;
-}
-
 static NSString *fixupName(NSString *name)
 {
     if (!CDTISFixUpDatabaseName) return name;
@@ -1343,10 +1146,6 @@ static NSString *fixupName(NSString *name)
     self.databaseName = databaseName;
     self.datastore = datastore;
     self.manager = manager;
-
-    if (![self setupReplicators:remoteURL manager:manager datastore:datastore]) {
-        CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: continuing without replication", CDTISType);
-    }
 
     return YES;
 }
@@ -1571,75 +1370,73 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     [super setMetadata:metadata];
 }
 
-#pragma mark - Database Delegates
-/**
- * Called when the replicator changes state.
- */
-- (void)replicatorDidChangeState:(CDTReplicator *)replicator
+#pragma mark - Replication Creators
+- (CDTReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error
 {
-    NSString *state;
-    switch (replicator.state) {
-        case CDTReplicatorStatePending:
-            state = @"CDTReplicatorStatePending";
-            break;
-        case CDTReplicatorStateStarted:
-            state = @"CDTReplicatorStateStarted";
-            break;
-        case CDTReplicatorStateStopped:
-            state = @"CDTReplicatorStateStopped";
-            break;
-        case CDTReplicatorStateStopping:
-            state = @"CDTReplicatorStateStopping";
-            break;
-        case CDTReplicatorStateComplete:
-            state = @"CDTReplicatorStateComplete";
-            break;
-        case CDTReplicatorStateError:
-            state = @"CDTReplicatorStateError";
-            break;
-        default:
-            state = @"unknown replicator state";
-            CDTLogWarn(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: %@: state: %@", CDTISType,
-                       [self cleanURL:self.remoteURL], replicator, state);
-            break;
+    NSError *err = nil;
+    NSString *clean = [self cleanURL:remoteURL];
+
+    CDTReplicatorFactory *repFactory =
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+    if (!repFactory) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
+                    CDTISType, clean);
+        return nil;
     }
 
-    CDTLogInfo(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: %@: state: %@", CDTISType,
-               [self cleanURL:self.remoteURL], replicator, state);
+    CDTPushReplication *pushRep =
+        [CDTPushReplication replicationWithSource:self.datastore target:remoteURL];
+    if (!pushRep) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create push replication object",
+                    CDTISType, clean);
+        return nil;
+    }
+
+    CDTReplicator *pusher = [repFactory oneWay:pushRep error:&err];
+    if (!pusher) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for push: %@",
+                    CDTISType, clean, err);
+        if (error) {
+            *error = err;
+        }
+        return nil;
+    }
+
+    return pusher;
 }
 
-/**
- * Called whenever the replicator changes progress
- */
-- (void)replicatorDidChangeProgress:(CDTReplicator *)replicator
+- (CDTReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error
 {
-    CDTLogInfo(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: %@: progressed: [%@/%@]", CDTISType,
-               [self cleanURL:self.remoteURL], replicator, @(replicator.changesProcessed),
-               @(replicator.changesTotal));
-    self.progressBlock(NO, replicator.changesProcessed, replicator.changesTotal, nil);
-}
+    NSError *err = nil;
+    NSString *clean = [self cleanURL:remoteURL];
 
-/**
- * Called when a state transition to COMPLETE or STOPPED is
- * completed.
- */
-- (void)replicatorDidComplete:(CDTReplicator *)replicator
-{
-    CDTLogInfo(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: %@: completed", CDTISType,
-               [self cleanURL:self.remoteURL], replicator);
-    self.progressBlock(YES, 0, 0, nil);
-    self.progressBlock = nil;
-}
+    CDTReplicatorFactory *repFactory =
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+    if (!repFactory) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
+                    CDTISType, clean);
+        return nil;
+    }
 
-/**
- * Called when a state transition to ERROR is completed.
- */
-- (void)replicatorDidError:(CDTReplicator *)replicator info:(NSError *)info
-{
-    CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: %@: suffered error: %@", CDTISType,
-                [self cleanURL:self.remoteURL], replicator, info);
-    self.progressBlock(YES, 0, 0, info);
-    self.progressBlock = nil;
+    CDTPullReplication *pullRep =
+        [CDTPullReplication replicationWithSource:remoteURL target:self.datastore];
+    if (!pullRep) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create pull replication object",
+                    CDTISType, clean);
+        return nil;
+    }
+
+    CDTReplicator *puller = [repFactory oneWay:pullRep error:&err];
+    if (!puller) {
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for pull: %@",
+                    CDTISType, clean, err);
+        if (error) {
+            *error = err;
+        }
+        return nil;
+    }
+
+    return puller;
 }
 
 #pragma mark - required methods
