@@ -1466,7 +1466,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     NSString *clean = [self cleanURL:remoteURL];
 
     CDTReplicatorFactory *repFactory =
-    [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
     if (!repFactory) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
                     CDTISType, clean);
@@ -1474,7 +1474,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     }
 
     CDTPushReplication *pushRep =
-    [CDTPushReplication replicationWithSource:self.datastore target:remoteURL];
+        [CDTPushReplication replicationWithSource:self.datastore target:remoteURL];
     if (!pushRep) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create push replication object",
                     CDTISType, clean);
@@ -1500,7 +1500,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     NSString *clean = [self cleanURL:remoteURL];
 
     CDTReplicatorFactory *repFactory =
-    [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
     if (!repFactory) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
                     CDTISType, clean);
@@ -1508,7 +1508,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     }
 
     CDTPullReplication *pullRep =
-    [CDTPullReplication replicationWithSource:remoteURL target:self.datastore];
+        [CDTPullReplication replicationWithSource:remoteURL target:self.datastore];
     if (!pullRep) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create pull replication object",
                     CDTISType, clean);
