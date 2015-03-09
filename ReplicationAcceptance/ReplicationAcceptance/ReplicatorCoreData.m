@@ -21,7 +21,7 @@
 @property (nonatomic, strong) NSURL *storeURL;
 @property (nonatomic, strong) NSURL *fromURL;
 @property (nonatomic, strong) NSString *primaryRemoteDatabaseName;
-@property (nonatomic, strong) NSString *migrateRemoteDatabaseName;
+@property (nonatomic, strong) NSMutableArray *secondaryRemoteDatabaseNames;
 @property (nonatomic, strong) NSString *fromCDE;
 @property (nonatomic, strong) NSString *toCDE;
 @property (nonatomic, strong) NSMappingModel *mapper;
@@ -106,6 +106,24 @@
     return _managedObjectContext;
 }
 
+- (NSURL *)createSecondaryDatabase:(NSString *)append
+{
+    XCTAssertTrue(([append length] > 0), @"append must no be empty");
+    if (!self.secondaryRemoteDatabaseNames) {
+        self.secondaryRemoteDatabaseNames = [NSMutableArray array];
+    }
+
+    NSString *sec = [self.primaryRemoteDatabaseName stringByAppendingString:append];
+    NSURL *secURL = [NSURL URLWithString:sec relativeToURL:self.remoteRootURL];
+    XCTAssertNotNil(secURL, "Secondary URL evaluated to nil?");
+
+    [self createRemoteDatabase:sec instanceURL:self.remoteRootURL];
+
+    [self.secondaryRemoteDatabaseNames addObject:sec];
+
+    return secURL;
+}
+
 - (NSPersistentStoreCoordinator *)persistentStoreCoordinator
 {
     if (_persistentStoreCoordinator != nil) {
@@ -141,13 +159,9 @@
         XCTAssertNotNil(mapMom, @"Failed to create mapping model");
         XCTAssertNil(err, @"Error: %@", err);
 
-        self.migrateRemoteDatabaseName =
-            [self.primaryRemoteDatabaseName stringByAppendingString:@"-migrate"];
-
-        [self createRemoteDatabase:self.migrateRemoteDatabaseName instanceURL:rootURL];
         NSURL *fromURL = [NSURL URLWithString:self.primaryRemoteDatabaseName relativeToURL:rootURL];
 
-        storeURL = [NSURL URLWithString:self.migrateRemoteDatabaseName relativeToURL:rootURL];
+        storeURL = [self createSecondaryDatabase:@"-migrate"];
 
         err = nil;
         NSMigrationManager *mm =
@@ -220,8 +234,8 @@
     // Delete remote database
     [self deleteRemoteDatabase:self.primaryRemoteDatabaseName instanceURL:self.remoteRootURL];
 
-    if (self.migrateRemoteDatabaseName) {
-        [self deleteRemoteDatabase:self.migrateRemoteDatabaseName instanceURL:self.remoteRootURL];
+    for (NSString *dbName in self.secondaryRemoteDatabaseNames) {
+        [self deleteRemoteDatabase:dbName instanceURL:self.remoteRootURL];
     }
     [super tearDown];
 }
