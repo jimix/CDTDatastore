@@ -319,6 +319,14 @@
 
 - (NSUInteger)pullMe { return [self pullFromURL:self.primaryRemoteDatabaseURL]; }
 
+- (NSInteger)doConflictWithErr:(NSError **)error
+{
+    CDTIncrementalStore *myIS = [self getIncrementalStore];
+    XCTAssertNotNil(myIS, "Could not get IS Object");
+
+    return [myIS processConflictsWithError:error];
+}
+
 - (void)testCoreDataPushPull
 {
     int max = 100;
@@ -591,4 +599,152 @@
     XCTAssertNotNil([mo valueForKey:@"number"]);
     XCTAssertNoThrow([mo valueForKey:@"checkit"]);
 }
+
+- (void)testCoreDataConflicts
+{
+    int max = 10;
+    NSError *err = nil;
+
+    /**
+     *  Make an original set
+     */
+    NSManagedObjectContext *moc = [self createNumbersAndSave:max];
+
+    // there is actually `max` docs plus the metadata document
+    int docs = max + 1;
+
+    /**
+     *  Push it to the primary remote DB
+     */
+    NSInteger count = [self pushMe];
+    XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
+
+    /**
+     *  Push it to a secondary remote DB, we will treat this as an "original" copy
+     */
+    NSURL *originalURL = [self createSecondaryDatabase:@"-conflict"];
+    count = [self pushToURL:originalURL];
+    XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
+
+    /**
+     *  Kill the local DB
+     */
+    [self removeLocalDatabase];
+
+    /**
+     *  New Local DB
+     */
+    moc = self.managedObjectContext;
+    XCTAssertNotNil(moc, @"could not create Context");
+
+    /**
+     *  Pull the original content
+     */
+    count = [self pullFromURL:originalURL];
+    XCTAssertTrue(count == docs, @"push to original: unexpected processed objects: %@ != %d", @(count), docs);
+
+    /**
+     * Check for conflicts
+     */
+    err = nil;
+    count = [self doConflictWithErr:&err];
+    XCTAssertNil(err, @"processConflicts failed with error: %@", err);
+    XCTAssertTrue(count == 1, @"Unexpected number of conflicts: %@ != %d", @(count), 1);
+
+    NSArray *results;
+    NSFetchRequest *fr = [NSFetchRequest fetchRequestWithEntityName:@"Entry"];
+    fr.shouldRefreshRefetchedObjects = YES;
+
+    /**
+     *  fetch original content
+     */
+    results = [moc executeFetchRequest:fr error:&err];
+    XCTAssertNotNil(results, @"Expected results: %@", err);
+    count = [results count];
+    XCTAssertTrue(count == max, @"fetch: unexpected processed objects: %@ != %d", @(count), max);
+
+    /**
+     *  Modify the content by updating the creation date as well as decorate the number with 1 * max
+     *  This means that we can eyeball "0d" vs "1d" vs "2d"
+     */
+    for (Entry *e in results) {
+        long long val = [e.number longLongValue];
+
+        e.number = @(val + (1 * max));
+        e.created = [NSDate dateWithTimeIntervalSinceNow:0];
+    }
+    XCTAssertTrue([moc save:&err], @"MOC save failed");
+    XCTAssertNil(err, @"MOC save failed with error: %@", err);
+
+    /**
+     *  Push updated data to primary DB
+     */
+    count = [self pushMe];
+    XCTAssertTrue(count == docs, @"push to primary: unexpected processed objects: %@ != %d",
+                  @(count), docs);
+
+    /**
+     *  kill local
+     */
+    [self removeLocalDatabase];
+
+    /**
+     *  New local
+     */
+    moc = self.managedObjectContext;
+    XCTAssertNotNil(moc, @"could not create Context");
+
+    /**
+     *  Pull in from the original Database
+     */
+    count = [self pullFromURL:originalURL];
+    XCTAssertTrue(count == docs, @"pull from original: unexpected processed objects: %@ != %d",
+                  @(count), docs);
+
+    /**
+     * Check for conflicts
+     */
+    err = nil;
+    count = [self doConflictWithErr:&err];
+    XCTAssertNil(err, @"processConflicts failed with error: %@", err);
+    XCTAssertTrue(count == 1, @"Unexpected number of conflicts: %@ != %d", @(count), 1);
+
+    fr = [NSFetchRequest fetchRequestWithEntityName:@"Entry"];
+    fr.shouldRefreshRefetchedObjects = YES;
+
+    /**
+     *  fetch original context
+     */
+    results = [moc executeFetchRequest:fr error:&err];
+    XCTAssertNotNil(results, @"Expected results: %@", err);
+    count = [results count];
+    XCTAssertTrue(count == max, @"fetch: unexpected processed objects: %@ != %d", @(count), max);
+
+    /**
+     *  modify again, this time value should be "2d"
+     */
+    for (Entry *e in results) {
+        long long val = [e.number longLongValue];
+
+        e.number = @(val + (2 * max));
+        e.created = [NSDate dateWithTimeIntervalSinceNow:0];
+    }
+    XCTAssertTrue([moc save:&err], @"MOC save failed");
+    XCTAssertNil(err, @"MOC save failed with error: %@", err);
+
+    /**
+     *  pull in the primary that is full of "1d" into our "2d" data
+     */
+    count = [self pullMe];
+    XCTAssertTrue(count == docs, @"pull from primary: unexpected processed objects: %@ != %d",
+                  @(count), docs);
+    /**
+     *  Check for the right number of conflicts
+     */
+    err = nil;
+    count = [self doConflictWithErr:&err];
+    XCTAssertNil(err, @"processConflicts failed with error: %@", err);
+    XCTAssertTrue(count == max, @"Unexpected number of conflicts: %@ != %d", @(count), max);
+}
+
 @end

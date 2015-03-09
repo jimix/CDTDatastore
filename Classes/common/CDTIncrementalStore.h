@@ -89,4 +89,9 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
 */
 - (CDTReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error;
 
+/**
+ *  <#Description#>
+ */
+- (NSUInteger)processConflictsWithError:(NSError **)error;
+
 @end

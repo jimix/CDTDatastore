@@ -6,12 +6,18 @@
 //
 //
 
+#pragma GCC diagnostic ignored "-Werror"
+
 #import <Foundation/Foundation.h>
 #import <libkern/OSAtomic.h>
 
 #import <CDTLogging.h>
 
 #import "CDTIncrementalStore.h"
+#import "CDTIncrementalStore.h"
+#import "CDTConflictResolver.h"
+#import "CDTDatastore+Conflicts.h"
+
 #import "CDTISObjectModel.h"
 #import "CDTFieldIndexer.h"
 #import "CDTISGraphviz.h"
@@ -104,6 +110,62 @@ static BOOL CDTISFixUpDatabaseName = NO;
  *  Check for the exisitence of subentities that we may be ignorning
  */
 static BOOL CDTISCheckForSubEntities = NO;
+
+/**
+ *  When resolving conflicts with the Metadata document, the remote copy should win.
+ */
+static BOOL CDTISMetaDataConflictsGoToRemote = YES;
+
+@interface CDTISCoreDataResolver : NSObject <CDTConflictResolver>
+@property (nonatomic, strong) CDTIncrementalStore *myIS;
+
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is;
+- (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts;
+@end
+
+@implementation CDTISCoreDataResolver
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is
+{
+    self = [super init];
+    if (self) {
+        _myIS = is;
+    }
+    return self;
+}
+
+- (CDTDocumentRevision *)resolveMetaConflicts:(NSArray *)conflicts
+{
+    // The only real conflict should be the UUID so we let the Remote win
+    NSDictionary *localData = self.myIS.metadata;
+    NSString *localKey = localData[NSStoreUUIDKey];
+    for (CDTDocumentRevision *rev in conflicts) {
+        NSDictionary *conflictBody = rev.body;
+        NSDictionary *conflictData = conflictBody[CDTISMetaDataKey];
+        NSString *conflictKey = conflictData[NSStoreUUIDKey];
+        if (CDTISMetaDataConflictsGoToRemote) {
+            if (![localKey isEqualToString:conflictKey]) {
+                return rev;
+            }
+        } else {
+            if ([localKey isEqualToString:conflictKey]) {
+                return rev;
+            }
+        }
+    }
+    // If they all match then just pick the first one
+    return [conflicts objectAtIndex:0];
+}
+
+- (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts
+{
+    if ([docId isEqualToString:CDTISMetaDataDocID]) {
+        return [self resolveMetaConflicts:conflicts];
+    }
+    // real data conflicts
+    return [conflicts objectAtIndex:0];
+}
+
+@end
 
 @implementation CDTIncrementalStore
 
@@ -1526,6 +1588,45 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     }
 
     return puller;
+}
+
+- (NSUInteger)processConflictsWithError:(NSError **)error
+{
+    NSError *err;
+    CDTISCoreDataResolver *resolver = [[CDTISCoreDataResolver alloc] initWithIncrementalStore:self];
+    NSArray *conflicted = [self.datastore getConflictedDocumentIds];
+
+    // need to deal with meta first
+    NSUInteger metaIndex = [conflicted indexOfObject:CDTISMetaDataDocID];
+    if (metaIndex != NSNotFound) {
+        if (![self.datastore resolveConflictsForDocument:CDTISMetaDataDocID
+                                                resolver:resolver
+                                                   error:&err]) {
+            if (error) {
+                // does this qualify for a special error?
+                *error = err;
+                return 0;
+            }
+        }
+
+        // I could refetch here, but this is, likely to be, more efficient
+        NSMutableArray *prune = [NSMutableArray arrayWithArray:conflicted];
+        [prune removeObjectAtIndex:metaIndex];
+        conflicted = [NSArray arrayWithArray:prune];
+    }
+
+    NSUInteger count = 0;
+
+    for (NSString *docID in conflicted) {
+        if (![self.datastore resolveConflictsForDocument:docID resolver:resolver error:&err]) {
+            if (error) {
+                *error = err;
+                return count;
+            }
+        }
+        ++count;
+    }
+    return count;
 }
 
 #pragma mark - required methods
