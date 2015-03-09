@@ -283,12 +283,12 @@
     }
 }
 
-- (NSUInteger)pushme
+- (NSUInteger)pushToURL:(NSURL *)url
 {
     NSError *err = nil;
     CDTIncrementalStore *myIS = [self getIncrementalStore];
-    CDTReplicator *pusher = [myIS replicatorThatPushesToURL:self.primaryRemoteDatabaseURL
-                                                  withError:&err];
+    XCTAssertNotNil(myIS, "Could not get IS Object");
+    CDTReplicator *pusher = [myIS replicatorThatPushesToURL:url withError:&err];
 
     XCTAssertNotNil(pusher, @"Pusher create faile with: %@", err);
 
@@ -299,12 +299,14 @@
     return pusher.changesTotal;
 }
 
-- (NSUInteger)pullme
+- (NSUInteger)pushMe { return [self pushToURL:self.primaryRemoteDatabaseURL]; }
+
+- (NSUInteger)pullFromURL:(NSURL *)url
 {
     NSError *err = nil;
     CDTIncrementalStore *myIS = [self getIncrementalStore];
-    CDTReplicator *puller = [myIS replicatorThatPullsFromURL:self.primaryRemoteDatabaseURL
-                                                   withError:&err];
+    XCTAssertNotNil(myIS, "Could not get IS Object");
+    CDTReplicator *puller = [myIS replicatorThatPullsFromURL:url withError:&err];
 
     XCTAssertNotNil(puller, @"Puller create faile with: %@", err);
 
@@ -314,6 +316,8 @@
     }
     return puller.changesTotal;
 }
+
+- (NSUInteger)pullMe { return [self pullFromURL:self.primaryRemoteDatabaseURL]; }
 
 - (void)testCoreDataPushPull
 {
@@ -329,7 +333,7 @@
      *  Push
      */
 
-    NSInteger count = [self pushme];
+    NSInteger count = [self pushMe];
     XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
 
     [self removeLocalDatabase];
@@ -353,8 +357,7 @@
     moc = self.managedObjectContext;
     XCTAssertNotNil(moc, @"could not create Context");
 
-
-    count = [self pullme];
+    count = [self pullMe];
     XCTAssertTrue(count == docs, @"pull: unexpected processed objects: %@ != %d", @(count), docs);
 
     /**
@@ -392,7 +395,7 @@
     int docs = max + 1;
 
     // push
-    NSInteger count = [self pushme];
+    NSInteger count = [self pushMe];
     XCTAssertTrue(count == docs, @"push: unexpected processed objects: %@ != %d", @(count), docs);
 
     [self removeLocalDatabase];
@@ -401,7 +404,7 @@
     moc = [self createNumbersAndSave:max];
 
     // now pull
-    count = [self pullme];
+    count = [self pullMe];
     XCTAssertTrue(count == docs, @"pull: unexpected processed objects: %@ != %d", @(count), docs);
 
     // Read it back
@@ -525,7 +528,7 @@
     count = [results count];
     XCTAssertTrue(count == max, @"fetch: unexpected processed objects: %@ != %d", @(count), max);
 
-    count = [self pushme];
+    count = [self pushMe];
     XCTAssertTrue(count == docs + max, @"push: unexpected processed objects: %@ != %d", @(count),
                   docs + max);
 }
