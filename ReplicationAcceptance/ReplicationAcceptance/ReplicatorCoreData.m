@@ -319,12 +319,12 @@
 
 - (NSUInteger)pullMe { return [self pullFromURL:self.primaryRemoteDatabaseURL]; }
 
-- (NSInteger)doConflictWithErr:(NSError **)error
+- (NSArray *)doConflictWithContext:(NSManagedObjectContext *)moc withError:(NSError **)error
 {
     CDTIncrementalStore *myIS = [self getIncrementalStore];
     XCTAssertNotNil(myIS, "Could not get IS Object");
 
-    return [myIS processConflictsWithError:error];
+    return [myIS processConflictsWithContext:moc withError:error];
 }
 
 - (void)testCoreDataPushPull
@@ -641,17 +641,20 @@
      *  Pull the original content
      */
     count = [self pullFromURL:originalURL];
-    XCTAssertTrue(count == docs, @"push to original: unexpected processed objects: %@ != %d", @(count), docs);
+    XCTAssertTrue(count == docs, @"push to original: unexpected processed objects: %@ != %d",
+                  @(count), docs);
+
+    NSArray *results;
 
     /**
      * Check for conflicts
      */
     err = nil;
-    count = [self doConflictWithErr:&err];
+    results = [self doConflictWithContext:moc withError:&err];
     XCTAssertNil(err, @"processConflicts failed with error: %@", err);
-    XCTAssertTrue(count == 1, @"Unexpected number of conflicts: %@ != %d", @(count), 1);
+    count = [results count];
+    XCTAssertTrue(count == 0, @"Unexpected number of conflicts: %@ != 0", @(count));
 
-    NSArray *results;
     NSFetchRequest *fr = [NSFetchRequest fetchRequestWithEntityName:@"Entry"];
     fr.shouldRefreshRefetchedObjects = YES;
 
@@ -705,9 +708,10 @@
      * Check for conflicts
      */
     err = nil;
-    count = [self doConflictWithErr:&err];
+    results = [self doConflictWithContext:moc withError:&err];
     XCTAssertNil(err, @"processConflicts failed with error: %@", err);
-    XCTAssertTrue(count == 1, @"Unexpected number of conflicts: %@ != %d", @(count), 1);
+    count = [results count];
+    XCTAssertTrue(count == 0, @"Unexpected number of conflicts: %@ != 0", @(count));
 
     fr = [NSFetchRequest fetchRequestWithEntityName:@"Entry"];
     fr.shouldRefreshRefetchedObjects = YES;
@@ -742,9 +746,32 @@
      *  Check for the right number of conflicts
      */
     err = nil;
-    count = [self doConflictWithErr:&err];
+    results = [self doConflictWithContext:moc withError:&err];
     XCTAssertNil(err, @"processConflicts failed with error: %@", err);
+    count = [results count];
     XCTAssertTrue(count == max, @"Unexpected number of conflicts: %@ != %d", @(count), max);
-}
+
+    NSMergePolicy *mp =
+        [[NSMergePolicy alloc] initWithMergeType:NSMergeByPropertyStoreTrumpMergePolicyType];
+    XCTAssertTrue([mp resolveConflicts:results error:&err], @"resolveConflict Failed");
+    XCTAssertNil(err, @"resolveConflicts failed with error: %@", err);
+
+    results = [moc executeFetchRequest:fr error:&err];
+    XCTAssertNotNil(results, @"Expected results: %@", err);
+    count = [results count];
+    XCTAssertTrue(count == max, @"fetch: unexpected processed objects: %@ != %d", @(count), max);
+
+    /**
+     *  we should revert back to the "1d" form
+     */
+    for (Entry *e in results) {
+        long long n = [e.number longLongValue];
+        XCTAssertTrue((n - (1 * max) == (n % max)), @"unexpected result: %lld != %lld\n",
+                      n - (1 * max), (n % max));
+    }
+
+    XCTAssertTrue([moc save:&err], @"MOC save failed");
+    XCTAssertNil(err, @"MOC save failed with error: %@", err);
+    }
 
 @end

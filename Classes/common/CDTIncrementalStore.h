@@ -92,6 +92,6 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
 /**
  *  <#Description#>
  */
-- (NSUInteger)processConflictsWithError:(NSError **)error;
+- (NSArray *)processConflictsWithContext:(NSManagedObjectContext *)moc withError:(NSError **)error;
 
 @end

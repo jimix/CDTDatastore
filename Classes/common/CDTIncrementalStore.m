@@ -6,8 +6,6 @@
 //
 //
 
-#pragma GCC diagnostic ignored "-Werror"
-
 #import <Foundation/Foundation.h>
 #import <libkern/OSAtomic.h>
 
@@ -117,54 +115,9 @@ static BOOL CDTISCheckForSubEntities = NO;
 static BOOL CDTISMetaDataConflictsGoToRemote = YES;
 
 @interface CDTISCoreDataResolver : NSObject <CDTConflictResolver>
-@property (nonatomic, strong) CDTIncrementalStore *myIS;
-
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is;
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is withContext:(NSManagedObjectContext *)context;
 - (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts;
-@end
-
-@implementation CDTISCoreDataResolver
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is
-{
-    self = [super init];
-    if (self) {
-        _myIS = is;
-    }
-    return self;
-}
-
-- (CDTDocumentRevision *)resolveMetaConflicts:(NSArray *)conflicts
-{
-    // The only real conflict should be the UUID so we let the Remote win
-    NSDictionary *localData = self.myIS.metadata;
-    NSString *localKey = localData[NSStoreUUIDKey];
-    for (CDTDocumentRevision *rev in conflicts) {
-        NSDictionary *conflictBody = rev.body;
-        NSDictionary *conflictData = conflictBody[CDTISMetaDataKey];
-        NSString *conflictKey = conflictData[NSStoreUUIDKey];
-        if (CDTISMetaDataConflictsGoToRemote) {
-            if (![localKey isEqualToString:conflictKey]) {
-                return rev;
-            }
-        } else {
-            if ([localKey isEqualToString:conflictKey]) {
-                return rev;
-            }
-        }
-    }
-    // If they all match then just pick the first one
-    return [conflicts objectAtIndex:0];
-}
-
-- (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts
-{
-    if ([docId isEqualToString:CDTISMetaDataDocID]) {
-        return [self resolveMetaConflicts:conflicts];
-    }
-    // real data conflicts
-    return [conflicts objectAtIndex:0];
-}
-
+- (NSArray *)mergeConflicts;
 @end
 
 @implementation CDTIncrementalStore
@@ -1142,6 +1095,47 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
  *  Create a dictionary of values for the attributes of a Managed Object from
  *  a docId/ref.
  *
+ *  @param body   document body
+ *  @param blobStore Attachement dictionary
+ *  @param context context
+ *  @param version version
+ *  @param error   error
+ *
+ *  @return dictionary or nil with error
+ */
+- (NSDictionary *)valuesFromDocumentBody:(NSDictionary *)body
+                           withBlobStore:(NSDictionary *)blobStore
+                             withContext:(NSManagedObjectContext *)context
+                              versionPtr:(uint64_t *)version
+{
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+    for (NSString *name in body) {
+        if ([name isEqualToString:CDTISObjectVersionKey]) {
+            *version = [body[name] longLongValue];
+            continue;
+        }
+        if ([name hasPrefix:CDTISPrefix]) {
+            continue;
+        }
+
+        id value =
+            [self decodeProperty:name fromDoc:body withBlobStore:blobStore withContext:context];
+        if (!value) {
+            // Dictionaries do not take nil, but Values can't have NSNull.
+            // Apparently we just skip it and the properties faults take care
+            // of it
+            continue;
+        }
+        values[name] = value;
+    }
+
+    return [NSDictionary dictionaryWithDictionary:values];
+}
+
+/**
+ *  Create a dictionary of values for the attributes of a Managed Object from
+ *  a docId/ref.
+ *
  *  @param docID   docID
  *  @param context context
  *  @param version version
@@ -1161,30 +1155,11 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
         if (error) *error = err;
         return nil;
     }
-    NSMutableDictionary *values = [NSMutableDictionary dictionary];
-    for (NSString *name in rev.body) {
-        if ([name isEqualToString:CDTISObjectVersionKey]) {
-            *version = [rev.body[name] longLongValue];
-            continue;
-        }
-        if ([name hasPrefix:CDTISPrefix]) {
-            continue;
-        }
 
-        id value = [self decodeProperty:name
-                                fromDoc:rev.body
+    return [self valuesFromDocumentBody:rev.body
                           withBlobStore:rev.attachments
-                            withContext:context];
-        if (!value) {
-            // Dictionaries do not take nil, but Values can't have NSNull.
-            // Apparently we just skip it and the properties faults take care
-            // of it
-            continue;
-        }
-        values[name] = value;
-    }
-
-    return [NSDictionary dictionaryWithDictionary:values];
+                            withContext:context
+                             versionPtr:version];
 }
 
 static NSString *fixupName(NSString *name)
@@ -1590,10 +1565,10 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     return puller;
 }
 
-- (NSUInteger)processConflictsWithError:(NSError **)error
+- (NSArray *)processConflictsWithContext:(NSManagedObjectContext *)moc withError:(NSError **)error
 {
     NSError *err;
-    CDTISCoreDataResolver *resolver = [[CDTISCoreDataResolver alloc] initWithIncrementalStore:self];
+    CDTISCoreDataResolver *resolver = [[CDTISCoreDataResolver alloc] initWithIncrementalStore:self withContext:moc];
     NSArray *conflicted = [self.datastore getConflictedDocumentIds];
 
     // need to deal with meta first
@@ -1605,7 +1580,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
             if (error) {
                 // does this qualify for a special error?
                 *error = err;
-                return 0;
+                return nil;
             }
         }
 
@@ -1621,12 +1596,12 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         if (![self.datastore resolveConflictsForDocument:docID resolver:resolver error:&err]) {
             if (error) {
                 *error = err;
-                return count;
+                // should probably return a list of errors
             }
         }
         ++count;
     }
-    return count;
+    return [resolver mergeConflicts];
 }
 
 #pragma mark - required methods
@@ -2240,4 +2215,107 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     return [self.graph extractLLDB:@"/tmp/CDTIS.dot"];
 }
 
+@end
+
+@interface CDTISCoreDataResolver ()
+@property (nonatomic, strong) CDTIncrementalStore *myIS;
+@property (nonatomic, strong) NSManagedObjectContext *moc;
+@property (nonatomic, strong) NSMutableArray *conflicts;
+@end
+
+@implementation CDTISCoreDataResolver
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is withContext:(NSManagedObjectContext *)context
+{
+    self = [super init];
+    if (self) {
+        _conflicts = [NSMutableArray array];
+        if (!_conflicts) {
+            return nil;
+        }
+        _moc = context;
+        _myIS = is;
+    }
+    return self;
+}
+
+- (CDTDocumentRevision *)resolveMetaConflicts:(NSArray *)conflicts
+{
+    // The only real conflict should be the UUID so we let the Remote win
+    NSDictionary *localData = self.myIS.metadata;
+    NSString *localKey = localData[NSStoreUUIDKey];
+    for (CDTDocumentRevision *rev in conflicts) {
+        NSDictionary *conflictBody = rev.body;
+        NSDictionary *conflictData = conflictBody[CDTISMetaDataKey];
+        NSString *conflictKey = conflictData[NSStoreUUIDKey];
+        if (CDTISMetaDataConflictsGoToRemote) {
+            if (![localKey isEqualToString:conflictKey]) {
+                return rev;
+            }
+        } else {
+            if ([localKey isEqualToString:conflictKey]) {
+                return rev;
+            }
+        }
+    }
+    // If they all match then just pick the first one
+    return [conflicts objectAtIndex:0];
+}
+
+- (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts
+{
+    if ([docId isEqualToString:CDTISMetaDataDocID]) {
+        return [self resolveMetaConflicts:conflicts];
+    }
+
+    if (conflicts.count != 2) oops(@"not expecting count [%@] > 2", @(conflicts.count));
+
+    NSError *err;
+    NSNumber *vNum;
+
+    CDTDocumentRevision *first = [conflicts objectAtIndex:0];
+    vNum = first.body[CDTISObjectVersionKey];
+    uint64_t v1 = [vNum longLongValue];
+    NSDictionary *firstValues = [self.myIS valuesFromDocumentBody:first.body
+                                                    withBlobStore:first.attachments
+                                                      withContext:self.moc
+                                                       versionPtr:&v1];
+
+    if (!firstValues && err) {
+        oops(@"bad remoteValues") return nil;
+    }
+
+    CDTDocumentRevision *second = [conflicts objectAtIndex:1];
+    vNum = second.body[CDTISObjectVersionKey];
+    uint64_t v2 = [vNum longLongValue];
+    NSDictionary *secondValues = [self.myIS valuesFromDocumentBody:second.body
+                                                     withBlobStore:second.attachments
+                                                       withContext:self.moc
+                                                        versionPtr:&v2];
+
+    if (!secondValues && err) {
+        oops(@"bad localValues") return nil;
+    }
+
+    NSPersistentStoreCoordinator *psc = self.myIS.persistentStoreCoordinator;
+    NSString *entityName = second.body[CDTISEntityNameKey];
+    NSManagedObjectModel *mom = [psc managedObjectModel];
+    NSEntityDescription *entity = [[mom entitiesByName] objectForKey:entityName];
+    NSManagedObjectID *moid = [self.myIS newObjectIDForEntity:entity referenceObject:second.docId];
+
+    NSManagedObject *mo = [self.moc objectWithID:moid];
+    NSMergeConflict *mc = [[NSMergeConflict alloc] initWithSource:mo
+                                                       newVersion:v2
+                                                       oldVersion:v1
+                                                   cachedSnapshot:secondValues
+                                                persistedSnapshot:firstValues];
+
+    [self.conflicts addObject:mc];
+
+    return second;
+}
+
+- (NSArray *)mergeConflicts
+{
+    return [NSArray arrayWithArray:self.conflicts];
+}
 @end
