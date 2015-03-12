@@ -115,7 +115,8 @@ static BOOL CDTISCheckForSubEntities = NO;
 static BOOL CDTISMetaDataConflictsGoToRemote = YES;
 
 @interface CDTISCoreDataResolver : NSObject <CDTConflictResolver>
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is withContext:(NSManagedObjectContext *)context;
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is
+                             withContext:(NSManagedObjectContext *)context;
 - (CDTDocumentRevision *)resolve:(NSString *)docId conflicts:(NSArray *)conflicts;
 - (NSArray *)mergeConflicts;
 @end
@@ -1568,7 +1569,8 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
 - (NSArray *)processConflictsWithContext:(NSManagedObjectContext *)moc withError:(NSError **)error
 {
     NSError *err;
-    CDTISCoreDataResolver *resolver = [[CDTISCoreDataResolver alloc] initWithIncrementalStore:self withContext:moc];
+    CDTISCoreDataResolver *resolver =
+        [[CDTISCoreDataResolver alloc] initWithIncrementalStore:self withContext:moc];
     NSArray *conflicted = [self.datastore getConflictedDocumentIds];
 
     // need to deal with meta first
@@ -2224,7 +2226,8 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
 @end
 
 @implementation CDTISCoreDataResolver
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is withContext:(NSManagedObjectContext *)context
+- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is
+                             withContext:(NSManagedObjectContext *)context
 {
     self = [super init];
     if (self) {
@@ -2314,8 +2317,5 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     return second;
 }
 
-- (NSArray *)mergeConflicts
-{
-    return [NSArray arrayWithArray:self.conflicts];
-}
+- (NSArray *)mergeConflicts { return [NSArray arrayWithArray:self.conflicts]; }
 @end
