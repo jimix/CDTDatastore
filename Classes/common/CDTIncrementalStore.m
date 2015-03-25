@@ -2270,51 +2270,51 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return [self resolveMetaConflicts:conflicts];
     }
 
-    if (conflicts.count != 2) oops(@"not expecting count [%@] > 2", @(conflicts.count));
-
-    NSError *err;
     NSNumber *vNum;
 
-    CDTDocumentRevision *first = [conflicts objectAtIndex:0];
-    vNum = first.body[CDTISObjectVersionKey];
-    uint64_t v1 = [vNum longLongValue];
-    NSDictionary *firstValues = [self.myIS valuesFromDocumentBody:first.body
-                                                    withBlobStore:first.attachments
+    // sadly, we can't tell which one is the local rev so we just pick the first one
+    CDTDocumentRevision *localRev = [conflicts firstObject];
+    vNum = localRev.body[CDTISObjectVersionKey];
+    uint64_t localVersion = [vNum longLongValue];
+    NSDictionary *localValues = [self.myIS valuesFromDocumentBody:localRev.body
+                                                    withBlobStore:localRev.attachments
                                                       withContext:self.moc
-                                                       versionPtr:&v1];
+                                                       versionPtr:&localVersion];
 
-    if (!firstValues && err) {
-        oops(@"bad remoteValues") return nil;
-    }
-
-    CDTDocumentRevision *second = [conflicts objectAtIndex:1];
-    vNum = second.body[CDTISObjectVersionKey];
-    uint64_t v2 = [vNum longLongValue];
-    NSDictionary *secondValues = [self.myIS valuesFromDocumentBody:second.body
-                                                     withBlobStore:second.attachments
-                                                       withContext:self.moc
-                                                        versionPtr:&v2];
-
-    if (!secondValues && err) {
-        oops(@"bad localValues") return nil;
+    if (!localValues || localVersion == 0) {
+        oops(@"bad remoteValues");
+        return nil;
     }
 
     NSPersistentStoreCoordinator *psc = self.myIS.persistentStoreCoordinator;
-    NSString *entityName = second.body[CDTISEntityNameKey];
+    NSString *entityName = localRev.body[CDTISEntityNameKey];
     NSManagedObjectModel *mom = [psc managedObjectModel];
     NSEntityDescription *entity = [[mom entitiesByName] objectForKey:entityName];
-    NSManagedObjectID *moid = [self.myIS newObjectIDForEntity:entity referenceObject:second.docId];
+    NSManagedObjectID *moid = [self.myIS newObjectIDForEntity:entity referenceObject:localRev.docId];
 
     NSManagedObject *mo = [self.moc objectWithID:moid];
-    NSMergeConflict *mc = [[NSMergeConflict alloc] initWithSource:mo
-                                                       newVersion:v2
-                                                       oldVersion:v1
-                                                   cachedSnapshot:secondValues
-                                                persistedSnapshot:firstValues];
 
-    [self.conflicts addObject:mc];
+    for (NSUInteger idx = 1; idx < conflicts.count; idx++) {
+        CDTDocumentRevision *remoteRev = [conflicts objectAtIndex:1];
+        vNum = remoteRev.body[CDTISObjectVersionKey];
+        uint64_t remoteVersion = 0;
+        NSDictionary *remoteValues = nil;
+        if (!remoteRev.deleted) {
+            remoteVersion = [vNum longLongValue];
+            remoteValues = [self.myIS valuesFromDocumentBody:remoteRev.body
+                                            withBlobStore:remoteRev.attachments
+                                              withContext:self.moc
+                                               versionPtr:&remoteVersion];
+        }
 
-    return second;
+        NSMergeConflict *mc = [[NSMergeConflict alloc] initWithSource:mo
+                                                           newVersion:(NSUInteger)remoteVersion
+                                                           oldVersion:(NSUInteger)localVersion
+                                                       cachedSnapshot:remoteValues
+                                                    persistedSnapshot:localValues];
+        [self.conflicts addObject:mc];
+    }
+    return localRev;
 }
 
 - (NSArray *)mergeConflicts { return [NSArray arrayWithArray:self.conflicts]; }
