@@ -116,6 +116,11 @@ static BOOL CDTISFixUpDatabaseName = NO;
  */
 static BOOL CDTISCheckForSubEntities = NO;
 
+/**
+ *	Support batch update requests.
+ */
+static BOOL CDTISSupportBatchUpdates = YES;
+
 @implementation CDTIncrementalStore
 
 #pragma mark - Init
@@ -2301,7 +2306,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return [self executeSaveRequest:saveRequest withContext:context error:error];
     }
 
-    if (requestType == NSBatchUpdateRequestType) {
+    if (requestType == NSBatchUpdateRequestType && CDTISSupportBatchUpdates) {
         NSBatchUpdateRequest *updateRequest = (NSBatchUpdateRequest *)request;
         return [self executeBatchUpdateRequest:updateRequest withContext:context error:error];
     }
@@ -2390,8 +2395,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     NSMutableArray *objectIDs = [NSMutableArray arrayWithCapacity:[array count]];
     for (NSManagedObject *mo in array) {
         NSEntityDescription *e = [mo entity];
-        NSManagedObjectID *moid =
-            [self newObjectIDForEntity:e referenceObject:uniqueID(e.name)];
+        NSManagedObjectID *moid = [self newObjectIDForEntity:e referenceObject:uniqueID(e.name)];
 
         if (badObjectVersion(moid, self.metadata)) oops(@"hash mismatch?: %@", moid);
 
