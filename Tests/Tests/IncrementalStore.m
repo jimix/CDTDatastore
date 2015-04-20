@@ -1204,25 +1204,31 @@ static void *ISContextProgress = &ISContextProgress;
 
     XCTAssertTrue([maxNums.fpDouble isEqualToNumber:@(DBL_MAX)], @"Failed to retain double max");
     XCTAssertTrue([minNums.fpDouble isEqualToNumber:@(DBL_MIN)], @"Failed to retain double min");
+    XCTAssertTrue([infNums.fpDouble isEqualToNumber:@(INFINITY)],
+                  @"Failed to retain double infinity");
 
     XCTAssertTrue([maxNums.fpFloat isEqualToNumber:@(FLT_MAX)], @"Failed to retain float max");
     XCTAssertTrue([minNums.fpFloat isEqualToNumber:@(FLT_MIN)], @"Failed to retain float min");
-
-    XCTAssertTrue([maxNums.fpDecimal isEqual:[NSDecimalNumber maximumDecimalNumber]],
-                  @"Failed to retain decimal max");
-    XCTAssertTrue([minNums.fpDecimal isEqual:[NSDecimalNumber minimumDecimalNumber]],
-                  @"Failed to retain decimal min");
-
-    XCTAssertTrue([infNums.fpDouble isEqualToNumber:@(INFINITY)],
-                  @"Failed to retain double infinity");
     XCTAssertTrue([infNums.fpFloat isEqualToNumber:@(INFINITY)],
                   @"Failed to retain float infinity");
-    XCTAssertTrue(
-        [infNums.fpDecimal isEqual:(NSDecimalNumber *)[NSDecimalNumber numberWithDouble:INFINITY]],
-        @"Failed to retain decimal infinity");
 
-    XCTAssertTrue([nanNums.fpDouble isEqualToNumber:@(NAN)], @"Failed to retain double NaN");
-    XCTAssertTrue([nanNums.fpFloat isEqualToNumber:@(NAN)], @"Failed to retain float NaN");
+    if (sql) {
+        // SQLite has no representation for NaN, so CoreData (and the rest fo the world use NULL
+        XCTAssertNil(nanNums.fpDouble, @"Failed to retain double NaN");
+        XCTAssertNil(nanNums.fpFloat, @"Failed to retain float NaN");
+        // NSDecimalNumbers are too big for SQLite, so don't bother testing
+    } else {
+        XCTAssertTrue([nanNums.fpDouble isEqualToNumber:@(NAN)], @"Failed to retain double NaN");
+        XCTAssertTrue([nanNums.fpFloat isEqualToNumber:@(NAN)], @"Failed to retain float NaN");
+        XCTAssertTrue([maxNums.fpDecimal isEqual:[NSDecimalNumber maximumDecimalNumber]],
+                      @"Failed to retain decimal max");
+        XCTAssertTrue([minNums.fpDecimal isEqual:[NSDecimalNumber minimumDecimalNumber]],
+                      @"Failed to retain decimal min");
+        XCTAssertTrue(
+                      [infNums.fpDecimal isEqual:(NSDecimalNumber *)[NSDecimalNumber numberWithDouble:INFINITY]],
+                      @"Failed to retain decimal infinity");
+    }
+
     XCTAssertTrue([nanNums.fpDecimal isEqual:[NSDecimalNumber notANumber]],
                   @"Failed to retain decimal NaN");
 
