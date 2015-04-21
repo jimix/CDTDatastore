@@ -28,7 +28,6 @@
 @property (nonatomic, strong) NSURL *localURL;
 @property (nonatomic, strong) NSURL *remoteURL;
 @property (nonatomic, strong) CDTISObjectModel *objectModel;
-
 /**
  *  This holds the "dot" directed graph, see [dotMe](@ref dotMe)
  */
@@ -883,7 +882,8 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
         }
         if ([prop isKindOfClass:[NSAttributeDescription class]]) {
             NSAttributeDescription *att = prop;
-            enc = [self encodeAttribute:att withValue:changes[name] blobStore:blobStore error:error];
+            enc =
+                [self encodeAttribute:att withValue:changes[name] blobStore:blobStore error:error];
         } else if ([prop isKindOfClass:[NSRelationshipDescription class]]) {
             NSRelationshipDescription *rel = prop;
             enc = [self encodeRelation:rel withValue:changes[name] error:error];
@@ -1376,19 +1376,27 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     NSError *err = nil;
     NSString *clean = [self cleanURL:remoteURL];
 
-    CDTReplicatorFactory *repFactory =
-        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
-    if (!repFactory) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
-                    CDTISType, clean);
-        return nil;
-    }
-
     CDTPushReplication *pushRep =
         [CDTPushReplication replicationWithSource:self.datastore target:remoteURL];
     if (!pushRep) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create push replication object",
                     CDTISType, clean);
+        return nil;
+    }
+
+    CDTReplicatorFactory *repFactory =
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+    if (!repFactory) {
+        NSString *msg =
+            [NSString stringWithFormat:@"%@: %@: Could not create replication factory for push",
+                                       CDTISType, clean];
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@", msg);
+        if (error) {
+            NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : msg};
+            *error = [NSError errorWithDomain:CDTISErrorDomain
+                                         code:CDTISErrorReplicationFactory
+                                     userInfo:userInfo];
+        }
         return nil;
     }
 
@@ -1410,19 +1418,27 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     NSError *err = nil;
     NSString *clean = [self cleanURL:remoteURL];
 
-    CDTReplicatorFactory *repFactory =
-        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
-    if (!repFactory) {
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replication factory",
-                    CDTISType, clean);
-        return nil;
-    }
-
     CDTPullReplication *pullRep =
         [CDTPullReplication replicationWithSource:remoteURL target:self.datastore];
     if (!pullRep) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create pull replication object",
                     CDTISType, clean);
+        return nil;
+    }
+
+    CDTReplicatorFactory *repFactory =
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
+    if (!repFactory) {
+        NSString *msg =
+            [NSString stringWithFormat:@"%@: %@: Could not create replication factory for pull",
+                                       CDTISType, clean];
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@", msg);
+        if (error) {
+            NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : msg};
+            *error = [NSError errorWithDomain:CDTISErrorDomain
+                                         code:CDTISErrorReplicationFactory
+                                     userInfo:userInfo];
+        }
         return nil;
     }
 
@@ -1995,14 +2011,14 @@ NSString *kNorOperator = @"$nor";
     NSMutableArray *results = [NSMutableArray array];
     NSError __block *updateError;
     [result enumerateObjectsUsingBlock:^(CDTDocumentRevision *rev, NSUInteger idx, BOOL *stop) {
-        NSManagedObjectID *moid = [self newObjectIDForEntity:entity referenceObject:rev.docId];
+      NSManagedObjectID *moid = [self newObjectIDForEntity:entity referenceObject:rev.docId];
 
-        [self updateDocumentID:rev.docId withChanges:changes entity:entity error:&updateError];
-        if (updateError) {
-            *stop = YES;
-        } else {
-            [results addObject:moid];
-        }
+      [self updateDocumentID:rev.docId withChanges:changes entity:entity error:&updateError];
+      if (updateError) {
+          *stop = YES;
+      } else {
+          [results addObject:moid];
+      }
     }];
 
     if (updateError) {

@@ -67,7 +67,7 @@ operations will target.
 At this point you can use [Core Data] normally and your changes will
 be saved in the local `CDTDatastore` image.
 
-## Accessing your store object
+## Accessing Your Data Store Object
 
 At any time during your application you may decide to access the
 remote `CDTDatastore`.  In order to do this from a [Core Data]
@@ -84,36 +84,23 @@ NSArray *stores = [CDTIncrementalStore storesFromCoordinator:psc];
 CDTIncrementalStore *myIS = [stores firstObject];
 ```
 
-If you have not already established the link when you added your
-persistent store, you may do so by using `-linkReplicators:` and
-`-linkReplicators`.
-
-```objc
-// link remote database
-NSURL *linkURL = [NSURL URLWithString:databaseURI];
-[myIS linkReplicators:linkURL];
-
-// unlink current remote database
-[myIS unlinkReplicators];
-```
-
 ### Replication
 
 The act of [replication] can be performed by the using the
 CloudantSync replication interfaces described in [Replication].
 
 In order to perform a push or a pull you need to obtain a
-`CDTReplicator` that can to the operation. These are provided by
+`CDTReplicator` that performs the operation. These are provided by
 `-replicatorThatPushesToURL:withError:` and
-`-replicatorThatPullsFromURL:withError:`. From this point you can
-assign use the replicator as instructed in [Replication], including
-setting a delegate.
+`-replicatorThatPullsFromURL:withError:`. From this point you can use
+the replicator as instructed in [Replication], including setting a
+delegate.
 
 A simple example:
 
 ```objc
 NSError *err = nil;
-CDTIncrementalStore *myIS = [self getIncrementalStore];
+CDTIncrementalStore *myIS = <# See: Accessing Your Data Store Object #>
 CDTReplicator *puller = [myIS replicatorThatPullsFromURL:self.remoteURL withError:&err];
 
 if (![puller startWithError:&err]) {
