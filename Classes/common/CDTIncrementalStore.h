@@ -56,6 +56,7 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
     CDTISErrorMetaDataMismatch,
     CDTISErrorNoRemoteDB,
     CDTISErrorSyncBusy,
+    CDTISErrorReplicationFactory,
     CDTISErrorNotSupported
 };
 
@@ -78,7 +79,7 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
 - (CDTReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error;
 
 /**
- * Create a CDTReplicator object set up to replicate changes from a remote database to the
+ * Create a CDTReplicator object set up from replicate changes from a remote database to the
  * local datastore.
  *
  *  @param remoteURL the remote server URL to which the data is replicated.
