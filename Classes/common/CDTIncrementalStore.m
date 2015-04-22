@@ -1026,6 +1026,45 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
 }
 
 /**
+ *  Create a dictionary of values from the Document Body and Blob Store
+ *
+ *  @param body      body of document
+ *  @param blobStore blobStore attachement dictionary
+ *  @param context   context from Core Data
+ *  @param version   version
+ *
+ *  @return dictionary
+ */
+- (NSDictionary *)valuesFromDocumentBody:(NSDictionary *)body
+                           withBlobStore:(NSDictionary *)blobStore
+                             withContext:(NSManagedObjectContext *)context
+                              versionPtr:(uint64_t *)version
+{
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+    for (NSString *name in body) {
+        if ([name isEqualToString:CDTISObjectVersionKey]) {
+            *version = [body[name] longLongValue];
+            continue;
+        }
+        if ([name hasPrefix:CDTISPrefix]) {
+            continue;
+        }
+
+        id value =
+            [self decodeProperty:name fromDoc:body withBlobStore:blobStore withContext:context];
+        if (!value) {
+            // Dictionaries do not take nil, but Values can't have NSNull.
+            // Apparently we just skip it and the properties faults take care
+            // of it
+            continue;
+        }
+        values[name] = value;
+    }
+
+    return [NSDictionary dictionaryWithDictionary:values];
+}
+
+/**
  *  Create a dictionary of values for the attributes of a Managed Object from
  *  a docId/ref.
  *
@@ -1048,30 +1087,11 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
         if (error) *error = err;
         return nil;
     }
-    NSMutableDictionary *values = [NSMutableDictionary dictionary];
-    for (NSString *name in rev.body) {
-        if ([name isEqualToString:CDTISObjectVersionKey]) {
-            *version = [rev.body[name] longLongValue];
-            continue;
-        }
-        if ([name hasPrefix:CDTISPrefix]) {
-            continue;
-        }
 
-        id value = [self decodeProperty:name
-                                fromDoc:rev.body
+    return [self valuesFromDocumentBody:rev.body
                           withBlobStore:rev.attachments
-                            withContext:context];
-        if (!value) {
-            // Dictionaries do not take nil, but Values can't have NSNull.
-            // Apparently we just skip it and the properties faults take care
-            // of it
-            continue;
-        }
-        values[name] = value;
-    }
-
-    return [NSDictionary dictionaryWithDictionary:values];
+                            withContext:context
+                             versionPtr:version];
 }
 
 static NSString *fixupName(NSString *name)
