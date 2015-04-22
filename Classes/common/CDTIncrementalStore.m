@@ -28,6 +28,8 @@
 @property (nonatomic, strong) NSURL *localURL;
 @property (nonatomic, strong) NSURL *remoteURL;
 @property (nonatomic, strong) CDTISObjectModel *objectModel;
+@property (nonatomic, strong) CDTReplicatorFactory *repFactory;
+
 /**
  *  This holds the "dot" directed graph, see [dotMe](@ref dotMe)
  */
@@ -1142,10 +1144,26 @@ static NSString *fixupName(NSString *name)
         return NO;
     }
 
+    CDTReplicatorFactory *repFactory =
+        [[CDTReplicatorFactory alloc] initWithDatastoreManager:manager];
+    if (!repFactory) {
+        NSString *msg = [NSString
+            stringWithFormat:@"%@: Could not create replication factory for push", CDTISType];
+        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@", msg);
+        if (error) {
+            NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : msg};
+            *error = [NSError errorWithDomain:CDTISErrorDomain
+                                         code:CDTISErrorReplicationFactory
+                                     userInfo:userInfo];
+        }
+        return NO;
+    }
+
     // Commit before setting up replication
     self.databaseName = databaseName;
     self.datastore = datastore;
     self.manager = manager;
+    self.repFactory = repFactory;
 
     return YES;
 }
@@ -1384,23 +1402,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return nil;
     }
 
-    CDTReplicatorFactory *repFactory =
-        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
-    if (!repFactory) {
-        NSString *msg =
-            [NSString stringWithFormat:@"%@: %@: Could not create replication factory for push",
-                                       CDTISType, clean];
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@", msg);
-        if (error) {
-            NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : msg};
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorReplicationFactory
-                                     userInfo:userInfo];
-        }
-        return nil;
-    }
-
-    CDTReplicator *pusher = [repFactory oneWay:pushRep error:&err];
+    CDTReplicator *pusher = [self.repFactory oneWay:pushRep error:&err];
     if (!pusher) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for push: %@",
                     CDTISType, clean, err);
@@ -1426,23 +1428,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return nil;
     }
 
-    CDTReplicatorFactory *repFactory =
-        [[CDTReplicatorFactory alloc] initWithDatastoreManager:self.manager];
-    if (!repFactory) {
-        NSString *msg =
-            [NSString stringWithFormat:@"%@: %@: Could not create replication factory for pull",
-                                       CDTISType, clean];
-        CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@", msg);
-        if (error) {
-            NSDictionary *userInfo = @{NSLocalizedFailureReasonErrorKey : msg};
-            *error = [NSError errorWithDomain:CDTISErrorDomain
-                                         code:CDTISErrorReplicationFactory
-                                     userInfo:userInfo];
-        }
-        return nil;
-    }
-
-    CDTReplicator *puller = [repFactory oneWay:pullRep error:&err];
+    CDTReplicator *puller = [self.repFactory oneWay:pullRep error:&err];
     if (!puller) {
         CDTLogError(CDTREPLICATION_LOG_CONTEXT, @"%@: %@: Could not create replicator for pull: %@",
                     CDTISType, clean, err);
