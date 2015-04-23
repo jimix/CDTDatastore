@@ -9,6 +9,7 @@
 #import <CoreData/CoreData.h>
 #import <CloudantSync.h>
 #import "CDTIncrementalStore.h"
+#import "CDTISObjectModel.h"
 
 /**
  *  CDTISGraphviz creates a graph representation of the datastore using the
@@ -18,27 +19,14 @@
 
 @interface CDTISGraphviz : NSObject
 
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is;
-
 /**
- *  Actually create the "dot" output in memory
+ *  This creates the "dot" output
  *
- *  @return `YES` on success, `NO` on failure
+ *  @param datastore The Datastore to graph
+ *  @param objectModel The object model that decribes the datastore
+ *
+ *  @return NSData stucture or `nil` on error
  */
-- (BOOL)dotMe;
-
-/**
- *  Creates a string that is a debugger commance so the memory image
- *  can be dumped to a file
- *
- *  > *Warning*: this replaces contents of an existing file but does not
- *  > truncate it. So if the original file was bigger there will be garbage
- *  > at the end.
- *
- *  @param path File path to use
- *
- *  @return the string or `nil` on failure
- */
-- (NSString *)extractLLDB:(NSString *)path;
++ (NSData *)dotDatastore:(CDTDatastore *)datastore withObjectModel:(CDTISObjectModel *)objectModel;
 
 @end
