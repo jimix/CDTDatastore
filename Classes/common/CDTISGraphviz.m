@@ -9,25 +9,7 @@
 #import "CDTISGraphviz.h"
 #import "CDTISObjectModel.h"
 
-@interface CDTISGraphviz ()
-
-@property (nonatomic, strong) CDTIncrementalStore *iStore;
-@property (nonatomic, strong) NSData *dotData;
-
-@end
-
 @implementation CDTISGraphviz
-
-- (instancetype)initWithIncrementalStore:(CDTIncrementalStore *)is
-{
-    if (!is) return nil;
-
-    self = [super self];
-    if (self) {
-        _iStore = is;
-    }
-    return self;
-}
 
 /**
  *  Quick function to write an `NSString` in UTF8 format.
@@ -40,15 +22,10 @@ static void DotWrite(NSMutableData *out, NSString *s)
     [out appendBytes:[s UTF8String] length:[s lengthOfBytesUsingEncoding:NSUTF8StringEncoding]];
 }
 
-- (BOOL)dotMe
++ (NSData *)dotDatastore:(CDTDatastore *)datastore withObjectModel:(CDTISObjectModel *)objectModel
 {
-    if (!self.iStore) {
-        return NO;
-    }
-
-    CDTDatastore *datastore = self.iStore.datastore;
     if (!datastore) {
-        return NO;
+        return nil;
     }
     NSArray *all = [datastore getAllDocuments];
     NSMutableData *out = [NSMutableData data];
@@ -76,7 +53,7 @@ static void DotWrite(NSMutableData *out, NSString *s)
             }
             id value = rev.body[name];
             NSDictionary *meta = rev.body[CDTISMakeMeta(name)];
-            NSInteger ptype = [self.iStore propertyTypeFromDoc:rev.body withName:name];
+            NSInteger ptype = [objectModel propertyTypeWithName:name withEntityName:entity];
 
             size_t idx = [props count] + 1;
             switch (ptype) {
@@ -148,22 +125,6 @@ static void DotWrite(NSMutableData *out, NSString *s)
     }
     DotWrite(out, @"}\n");
 
-    self.dotData = [NSData dataWithData:out];
-
-    return YES;
+    return [NSData dataWithData:out];
 }
-
-- (NSString *)extractLLDB:(NSString *)path
-{
-    if (self.dotData) {
-        size_t length = [self.dotData length];
-
-        return [NSString stringWithFormat:@"memory read --force --binary --outfile "
-                @"%@ --count %zu %p",
-                path, length, [self.dotData bytes]];
-    }
-    return nil;
-}
-
-
 @end

@@ -14,10 +14,6 @@ extern NSString *const CDTISException;
 
 @interface CDTIncrementalStore : NSIncrementalStore
 
-@property (nonatomic, strong) CDTDatastore *datastore;
-
-- (NSInteger)propertyTypeFromDoc:(NSDictionary *)body withName:(NSString *)name;
-
 /**
  *  Returns the string that was used to register this incremental store
  *
