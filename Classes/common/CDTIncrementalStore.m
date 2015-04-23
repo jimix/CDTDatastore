@@ -24,6 +24,7 @@
 #pragma mark - properties
 @interface CDTIncrementalStore ()
 
+@property (nonatomic, strong) CDTDatastore *datastore;
 @property (nonatomic, strong) CDTDatastoreManager *manager;
 @property (nonatomic, strong) NSURL *localURL;
 @property (nonatomic, strong) NSURL *remoteURL;
@@ -33,7 +34,7 @@
 /**
  *  This holds the "dot" directed graph, see [dotMe](@ref dotMe)
  */
-@property (nonatomic, strong) CDTISGraphviz *graph;
+@property (nonatomic, strong) NSData *graph;
 
 @end
 
@@ -2169,9 +2170,12 @@ NSString *kNorOperator = @"$nor";
  */
 - (NSString *)dotMe
 {
-    self.graph = [[CDTISGraphviz alloc] initWithIncrementalStore:self];
-    [self.graph dotMe];
-    return [self.graph extractLLDB:@"/tmp/CDTIS.dot"];
+    self.graph = [CDTISGraphviz dotDatastore:self.datastore withObjectModel:self.objectModel];
+    NSUInteger length = [self.graph length];
+
+    return [NSString stringWithFormat:@"memory read --force --binary --outfile "
+            @"%@ --count %@ %p",
+            @"/tmp/CDTIS.dot", @(length), [self.graph bytes]];
 }
 
 @end
