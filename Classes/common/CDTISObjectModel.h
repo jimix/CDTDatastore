@@ -59,6 +59,8 @@ NSString *const CDTISFloatImageKey;
 NSString *const CDTISDoubleImageKey;
 NSString *const CDTISDecimalImageKey;
 
+NSString *const CDTISObjectVersionKey;
+
 // These are in addition to NSAttributeType, which is unsigned
 static NSInteger const CDTISRelationToOneType = -1;
 static NSInteger const CDTISRelationToManyType = -2;
