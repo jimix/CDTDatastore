@@ -9,6 +9,9 @@
 #import <CoreData/CoreData.h>
 #import <CloudantSync.h>
 
+#import "CDTISReplicator.h"
+
+
 extern NSString *const CDTISErrorDomain;
 extern NSString *const CDTISException;
 
@@ -63,6 +66,25 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
 @property (nonatomic, strong) NSString *databaseName;
 
 /**
+ *  Create a dictionary of values from the Document Body and Blob Store
+ *
+ *  @param body      body of document
+ *  @param blobStore blobStore attachement dictionary
+ *  @param context   context from Core Data
+ *  @param version   version
+ *
+ *  @return dictionary
+ */
+- (NSDictionary *)valuesFromDocumentBody:(NSDictionary *)body
+                           withBlobStore:(NSDictionary *)blobStore
+                             withContext:(NSManagedObjectContext *)context
+                              versionPtr:(uint64_t *)version;
+
+- (NSManagedObject *)managedObjectForEntityName:(NSString *)name
+                                referenceObject:(NSString *)ref
+                                        context:(NSManagedObjectContext *)context;
+
+/**
  * Create a CDTReplicator object set up to replicate changes from the
  * local datastore to a remote database.
  *
@@ -72,7 +94,7 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
  *  @return a CDTReplicator instance which can be used to start and
  *  stop the replication itself, or `nil` on error.
  */
-- (CDTReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error;
+- (CDTISReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error;
 
 /**
  * Create a CDTReplicator object set up from replicate changes from a remote database to the
@@ -84,6 +106,6 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
  *  @return a CDTReplicator instance which can be used to start and
  *  stop the replication itself, or `nil` on error.
 */
-- (CDTReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error;
+- (CDTISReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error;
 
 @end

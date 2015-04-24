@@ -24,6 +24,9 @@ NSString *const CDTISFloatImageKey = @"ieee754_single";
 NSString *const CDTISDoubleImageKey = @"ieee754_double";
 NSString *const CDTISDecimalImageKey = @"nsdecimal";
 
+NSString *const CDTISObjectVersionKey = @"CDTISObjectVersion";
+
+
 NSString *CDTISStringFromData(NSData *data)
 {
     NSMutableString *s = [NSMutableString string];
