@@ -11,9 +11,10 @@
 
 #import <CDTLogging.h>
 
+#import "CDTDatastore+Query.h"
+
 #import "CDTIncrementalStore.h"
 #import "CDTISObjectModel.h"
-#import "CDTDatastore+Query.h"
 #import "CDTISGraphviz.h"
 
 @implementation NSBatchUpdateResult
@@ -46,7 +47,6 @@ NSString *const CDTISException = @"CDTIncrementalStoreException";
 static NSString *const CDTISType = @"CDTIncrementalStore";
 static NSString *const CDTISDirectory = @"cloudant-sync-datastore-incremental";
 
-static NSString *const CDTISObjectVersionKey = @"CDTISObjectVersion";
 static NSString *const CDTISIdentifierKey = @"CDTISIdentifier";
 
 #pragma mark - property string type for backing store
@@ -1025,16 +1025,6 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
     return NO;
 }
 
-/**
- *  Create a dictionary of values from the Document Body and Blob Store
- *
- *  @param body      body of document
- *  @param blobStore blobStore attachement dictionary
- *  @param context   context from Core Data
- *  @param version   version
- *
- *  @return dictionary
- */
 - (NSDictionary *)valuesFromDocumentBody:(NSDictionary *)body
                            withBlobStore:(NSDictionary *)blobStore
                              withContext:(NSManagedObjectContext *)context
@@ -1410,7 +1400,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
 }
 
 #pragma mark - Replication Creators
-- (CDTReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error
+- (CDTISReplicator *)replicatorThatPushesToURL:(NSURL *)remoteURL withError:(NSError **)error
 {
     NSError *err = nil;
     NSString *clean = [self cleanURL:remoteURL];
@@ -1433,10 +1423,12 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return nil;
     }
 
-    return pusher;
+    return [[CDTISReplicator alloc] initWithDatastore:self.datastore
+                                     incrementalStore:self
+                                           replicator:pusher];
 }
 
-- (CDTReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error
+- (CDTISReplicator *)replicatorThatPullsFromURL:(NSURL *)remoteURL withError:(NSError **)error
 {
     NSError *err = nil;
     NSString *clean = [self cleanURL:remoteURL];
@@ -1459,7 +1451,22 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         return nil;
     }
 
-    return puller;
+    return [[CDTISReplicator alloc] initWithDatastore:self.datastore
+                                     incrementalStore:self
+                                           replicator:puller];
+}
+
+- (NSManagedObject *)managedObjectForEntityName:(NSString *)name
+                                referenceObject:(NSString *)ref
+                                        context:(NSManagedObjectContext *)context
+{
+    NSPersistentStoreCoordinator *psc = self.persistentStoreCoordinator;
+    NSManagedObjectModel *mom = [psc managedObjectModel];
+    NSEntityDescription *entity = [[mom entitiesByName] objectForKey:name];
+    NSManagedObjectID *moid = [self newObjectIDForEntity:entity referenceObject:ref];
+
+    NSManagedObject *mo = [context objectWithID:moid];
+    return mo;
 }
 
 #pragma mark - required methods
@@ -2037,7 +2044,8 @@ NSString *kNorOperator = @"$nor";
     updateResult.resultType = updateRequest.resultType;
 
     switch (updateRequest.resultType) {
-        case NSUpdatedObjectIDsResultType:  // Return the object IDs of the rows that were updated
+        case NSUpdatedObjectIDsResultType:  // Return the object IDs of the rows that were
+                                            // updated
             updateResult.result = results;
             break;
 
@@ -2193,9 +2201,9 @@ NSString *kNorOperator = @"$nor";
     self.graph = [CDTISGraphviz dotDatastore:self.datastore withObjectModel:self.objectModel];
     NSUInteger length = [self.graph length];
 
-    return [NSString stringWithFormat:@"memory read --force --binary --outfile "
-            @"%@ --count %@ %p",
-            @"/tmp/CDTIS.dot", @(length), [self.graph bytes]];
+    return
+        [NSString stringWithFormat:@"memory read --force --binary --outfile " @"%@ --count %@ %p",
+                                   @"/tmp/CDTIS.dot", @(length), [self.graph bytes]];
 }
 
 @end
