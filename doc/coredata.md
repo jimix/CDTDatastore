@@ -89,19 +89,25 @@ CDTIncrementalStore *myIS = [stores firstObject];
 The act of [replication] can be performed by the using the
 CloudantSync replication interfaces described in [Replication].
 
-In order to perform a push or a pull you need to obtain a
-`CDTReplicator` that performs the operation. These are provided by
+In order to perform a _push_ or a _pull_ you need to obtain a
+`CDTISReplicator` that performs the operation. These are provided by
 `-replicatorThatPushesToURL:withError:` and
-`-replicatorThatPullsFromURL:withError:`. From this point you can use
-the replicator as instructed in [Replication], including setting a
-delegate.
+`-replicatorThatPullsFromURL:withError:`.  This object not only
+contains a `CDTReplicator` object called `replicator` that is capable
+of performing the [replication], it also contains additional methods
+to help with merge conflict particularly after a _pull_, these will be
+described in detail below.
+
+Once you have a `CDTReplicator` you can use it as instructed in
+[Replication], including setting a delegate.
 
 A simple example:
 
 ```objc
 NSError *err = nil;
 CDTIncrementalStore *myIS = <# See: Accessing Your Data Store Object #>
-CDTReplicator *puller = [myIS replicatorThatPullsFromURL:self.remoteURL withError:&err];
+CDTISReplicator *pullerManager = [myIS replicatorThatPullsFromURL:self.remoteURL withError:&err];
+CDTReplicator *puller = pullerManager.replicator;
 
 if (![puller startWithError:&err]) {
     [self reportIssue:@"Pull Failed with error: %@", err];
@@ -113,8 +119,49 @@ if (![puller startWithError:&err]) {
 }
 ```
 
-Synchronization can be taken care of by some combination of push and
-pull, see [replication] and [conflicts].
+Synchronization can be taken care of by some combination of _push_ and
+_pull_, see the CloudantSync [replication] documents for more
+information.
+
+### Conflict Management
+Since _pushing_ and _pulling_ happen at the CloudantSync "Datastore"
+level, a mechanism to present possible conflicts in a way that is
+familiar to the [Core Data] developer is necessary.
+
+Normally, such conflicts are discovered upon saving an
+`NSManagedObjectContext` as described in Apple's [Change Management]
+documentation.  Ultimately, the programmer is presented with an
+`NSArray` of `NSMergeConflict` objects.  These [merge conflict]
+objects describe how the managed object has changed between the cached
+state at the persistent store coordinator and the external store in
+the backing store.
+
+In order to allow these conflicts to be resolved immediately after a
+_pull_ has completed, the `CDTISReplicator` object has introduced a
+method called `-processConflictsWithContext:error:` which returns the
+same `NSArray` of `NSMergeConflict` objects.
+
+This array can be used by the standard [merge policies] provided by
+`NSMergePolicyClass` as any [Core Data] application would use.  An
+example of using the policy that selects the ones that were _pull_ed in,
+over the objects that were active before the _pull_ is as follows:
+
+```objc
+// After a successful pull
+NSManagedObjectContext *moc =  <# Any active context #>;
+NSArray *mergeConflicts = [puller processConflictsWithContext:moc error:nil];
+NSMergePolicy *mp = [[NSMergePolicy alloc] initWithMergeType:NSMergeByPropertyStoreTrumpMergePolicyType];
+if (![mp resolveConflicts:conflicts error:nil]) {
+    // conflict resolution failure
+}
+```
+
+### Best Practices
+
+1. Save all `NSManagedObjectContext` objects before any replication activity
+1. Do not _push_ a Datastore that has conflicts in it.
+1. Resolve conflicts immediately after a _pull_.
+
 
 ## The Document Store
 Translating [Core Data] objects to a document store requires some
@@ -125,14 +172,15 @@ make sure that we do not compromise the integrity of each data
 "entity".
 
 There are two types of documents in the database:
-1. Meta Data: there is only one instance of this document and contains information about the rest of the documents in the database
+1. Meta Data: there is only one instance of this document and contains
+   information about the rest of the documents in the database
 1. Entity: Every [Core Data] Entity is represented by a unique entity
-document.
+   document.
 
 ### Meta Data
 Each initialized database will contain at least one document that
 describes the object model and the [Core Data] Meta Data. The document
-ID is "CDTISMetaData" and it is described in the following JSON [Schema], draft v4:
+ID is `CDTISMetaData` and it is described in the following JSON [Schema], draft v4:
 
 ```javascript
 // validated by https://json-schema-validator.herokuapp.com/
@@ -168,7 +216,7 @@ ID is "CDTISMetaData" and it is described in the following JSON [Schema], draft 
                 "int16", "int32", "int64",
                 // IEEE-754 floating point types
                 "double", "float",
-                // Large precisionion decimal values, created by
+                // Large precision decimal values, created by
                 // Apple.  Should be avoided for portability,
                 "decimal",
                 // Transformable Data, the application must provide
@@ -352,7 +400,7 @@ All other documents should follow the following schema:
         },
 
         // Apple has a type called NSDecimal, we discourage its use
-        // since it is not portable, but we allow it incase the
+        // since it is not portable, but we allow it in case the
         // application does not care.
         // The image is a base64 encoding of the structure binary
         "metaDataForNSDecimal": {
@@ -382,7 +430,7 @@ All other documents should follow the following schema:
     ],
 
     "properties" : {
-        // The entity that this data propery belongs to
+        // The entity that this data property belongs to
         "CDTISEntityName": { "$ref": "#/definitions/symbolicName" },
 
         // URI Generated by Core Data to track this object.  Should
@@ -468,22 +516,17 @@ deal with this inevitable corruption, we also store the IEEE 754
 <!-- refs -->
 
 [core data]: https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/CoreData/cdProgrammingGuide.html "Introduction to Core Data Programming Guide"
-
 [persistent store]: https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/CoreData/Articles/cdPersistentStores.html "Persistent Store Features"
-
 [incremental store]: https://developer.apple.com/library/mac/documentation/DataManagement/Conceptual/IncrementalStorePG/Introduction/Introduction.html "About Incremental Stores"
-
 [replication]: replication.md "Replicating Data Between Many Devices"
 [conflicts]: conflicts.md "Handling conflicts"
-
 [code blocks]: https://developer.apple.com/library/ios/documentation/Cocoa/Conceptual/ProgrammingWithObjectiveC/WorkingwithBlocks/ "Working with Blocks"
-
 [recipe]: https://developer.apple.com/library/ios/samplecode/iPhoneCoreDataRecipes/Introduction/Intro.html "iPhoneCoreDataRecipes"
-
 [gitrecipe]: https://git.ibmbaas.com/jimix/iphonecoredatarecipes "Git Tree of iPhoneCoreDataRecipes"
-
 [schema]: http://json-schema.org/ "The home of JSON Schema"
-
+[change management]: https://developer.apple.com/library/ios/documentation/Cocoa/Conceptual/CoreData/Articles/cdChangeManagement.html "Change Management"
+[merge conflict]: https://developer.apple.com/library/mac/documentation/CoreData/Reference/NSMergeConflict_Class/ "NSMergeConflict"
+[merge policies]: https://developer.apple.com/library/ios/documentation/CoreData/Reference/NSMergePolicy_Class/ "NSMergePolicy"
 
 <!--  LocalWords:  CDTDatastore CDTIncrementalStore OSX iOS objc BOOL
  -->
@@ -499,13 +542,47 @@ deal with this inevitable corruption, we also store the IEEE 754
  -->
 <!--  LocalWords:  firstObject linkReplicators linkURL unlink NSError
  -->
-<!--  LocalWords:  unlinkReplicators pushToRemote withProgress PNG
+<!--  LocalWords:  unlinkReplicators pushToRemote withProgress PNG zA
  -->
 <!--  LocalWords:  pullFromRemote UIProgressView weakProgress pushErr
  -->
-<!--  LocalWords:  NSInteger setProgress iPhoneCoreDataRecipes png
+<!--  LocalWords:  NSInteger setProgress iPhoneCoreDataRecipes png fA
  -->
 <!--  LocalWords:  gitrecipe NSThread MIMEType NSDecimalNumber NaN
  -->
-<!--  LocalWords:  JSON tokenized IEEE endian
+<!--  LocalWords:  JSON tokenized IEEE endian CloudantSync withError
+ -->
+<!--  LocalWords:  CDTISReplicator replicatorThatPushesToURL isActive
+ -->
+<!--  LocalWords:  replicatorThatPullsFromURL CDTReplicator Datastore
+ -->
+<!--  LocalWords:  pullerManager startWithError reportIssue moc alloc
+ -->
+<!--  LocalWords:  serverVerified NSManagedObjectContext javascript
+ -->
+<!--  LocalWords:  NSMergeConflict processConflictsWithContext enum
+ -->
+<!--  LocalWords:  NSMergePolicyClass mergeConflicts NSMergePolicy
+ -->
+<!--  LocalWords:  initWithMergeType resolveConflicts CDTISMetaData
+ -->
+<!--  LocalWords:  NSMergeByPropertyStoreTrumpMergePolicyType UTF utf
+ -->
+<!--  LocalWords:  symbolicName typeName bool xform WoS URI MetaData
+ -->
+<!--  LocalWords:  versionHash patternProperties objectModel metaData
+ -->
+<!--  LocalWords:  APPLCoreDataMetaData CDTISObject oneOf CDTISMeta
+ -->
+<!--  LocalWords:  relationToOne relationToMany metaDataForBinary nan
+ -->
+<!--  LocalWords:  metaDataForFloatNonFinite uint img num ieee CDTIS
+ -->
+<!--  LocalWords:  metaDataForFloatSingle nonFinite NSDecimal
+ -->
+<!--  LocalWords:  metaDataForFloatDouble metaDataForNSDecimal
+ -->
+<!--  LocalWords:  nsdecimal CDTISEntityName CDTISIdentifier
+ -->
+<!--  LocalWords:  CDTISObjectVersion
  -->
