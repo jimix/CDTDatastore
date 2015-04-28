@@ -262,7 +262,7 @@
 
     CFRelease(response);
     if (status >= 300) {
-        self.error = TDStatusToNSErrorWithInfo(status, self.changesFeedURL, errorInfo);
+        self.error = TDStatusToNSErrorWithInfo((TDStatus)status, self.changesFeedURL, errorInfo);
         [self stop];
         return NO;
     }

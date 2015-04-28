@@ -577,7 +577,7 @@ static NSUInteger largeRevTreeSize = 1500;
     
     NSArray *localDocs = [self.datastore getDocumentsWithIds:docids];
     XCTAssertNotNil(localDocs, @"nil");
-    XCTAssertTrue(localDocs.count == totalReplicated, @"unexpected number of docs: %@",localDocs.count);
+    XCTAssertTrue(localDocs.count == totalReplicated, @"unexpected number of docs: %@", @(localDocs.count));
     XCTAssertTrue(self.datastore.documentCount == totalReplicated,
                  @"Incorrect number of documents created %lu", self.datastore.documentCount);
     
@@ -658,8 +658,8 @@ static NSUInteger largeRevTreeSize = 1500;
         [NSThread sleepForTimeInterval:1.0f];
     }
 
-    XCTAssertEqual(replicator.state, CDTReplicatorStateStopped, @"expected a different state: %d (%@)",
-                   replicator.state, [CDTReplicator stringForReplicatorState:replicator.state]);
+    XCTAssertEqual(replicator.state, CDTReplicatorStateStopped, @"expected a different state: %@ (%@)",
+                   @(replicator.state), [CDTReplicator stringForReplicatorState:replicator.state]);
     
     BOOL docComparison = [self compareDocCount:self.datastore
       expectFewerDocsInRemoteDatabase:self.primaryRemoteDatabaseURL];

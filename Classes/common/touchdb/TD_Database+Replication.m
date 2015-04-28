@@ -67,7 +67,7 @@
         [_activeReplicators removeObjectIdenticalTo:repl];
 }
 
-- (NSObject*)lastSequenceWithCheckpointID:(NSString *)checkpointID
+- (id)lastSequenceWithCheckpointID:(NSString *)checkpointID
 {
     // This table schema is out of date but I'm keeping it the way it is for compatibility.
     // The 'remote' column now stores the opaque checkpoint IDs, and 'push' is ignored.

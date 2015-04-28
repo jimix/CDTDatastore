@@ -89,7 +89,7 @@
 
 @interface TD_Database (Replication_Internal)
 - (void)stopAndForgetReplicator:(TDReplicator*)repl;
-- (NSObject*)lastSequenceWithCheckpointID:(NSString*)checkpointID;
+- (id)lastSequenceWithCheckpointID:(NSString*)checkpointID;
 - (BOOL)setLastSequence:(NSObject*)lastSequence withCheckpointID:(NSString*)checkpointID;
 + (NSString*)joinQuotedStrings:(NSArray*)strings;
 @end
