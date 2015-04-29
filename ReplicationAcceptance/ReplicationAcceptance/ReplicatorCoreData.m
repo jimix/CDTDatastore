@@ -20,6 +20,7 @@
 @property (nonatomic, strong) NSManagedObjectContext *managedObjectContext;
 @property (nonatomic, strong) NSPersistentStoreCoordinator *persistentStoreCoordinator;
 @property (nonatomic, strong) NSURL *storeURL;
+@property (nonatomic, strong) NSURL *localDir;
 @property (nonatomic, strong) NSURL *fromURL;
 @property (nonatomic, strong) NSString *primaryRemoteDatabaseName;
 @property (nonatomic, strong) NSMutableArray *secondaryRemoteDatabaseNames;
@@ -126,6 +127,28 @@
     return secURL;
 }
 
+- (NSURL *)localDir
+{
+    if (_localDir) {
+        return _localDir;
+    }
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *docDir =
+        [[fileManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+
+    NSURL *localDir = [docDir URLByAppendingPathComponent:@"cdtis_test_databases"];
+    NSError *err = nil;
+    XCTAssertTrue([fileManager createDirectoryAtURL:localDir
+                        withIntermediateDirectories:YES
+                                         attributes:nil
+                                              error:&err],
+                  @"Can't create datastore directory: %@", localDir);
+    XCTAssertNil(err, @"Error: %@", err);
+
+    _localDir = localDir;
+    return _localDir;
+}
+
 - (NSPersistentStoreCoordinator *)persistentStoreCoordinator
 {
     if (_persistentStoreCoordinator != nil) {
@@ -141,9 +164,7 @@
     const BOOL sql = NO;
     if (sql) {
         storeType = NSSQLiteStoreType;
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        rootURL = [[fileManager URLsForDirectory:NSDocumentDirectory
-                                       inDomains:NSUserDomainMask] lastObject];
+        rootURL = self.localDir;
     } else {
         storeType = [CDTIncrementalStore type];
         rootURL = self.remoteRootURL;
@@ -151,6 +172,7 @@
 
     NSError *err = nil;
     NSURL *storeURL;
+    NSURL *localURL;
     NSPersistentStore *theStore;
 
     if (self.fromMom) {
@@ -161,7 +183,9 @@
         XCTAssertNotNil(mapMom, @"Failed to create mapping model");
         XCTAssertNil(err, @"Error: %@", err);
 
-        NSURL *fromURL = [NSURL URLWithString:self.primaryRemoteDatabaseName relativeToURL:rootURL];
+        NSURL *fromRemoteURL =
+            [NSURL URLWithString:self.primaryRemoteDatabaseName relativeToURL:rootURL];
+        NSURL *fromURL = [self.localDir URLByAppendingPathComponent:[fromRemoteURL lastPathComponent]];
 
         storeURL = [self createSecondaryDatabase:@"-migrate"];
 
@@ -170,11 +194,13 @@
             [[NSMigrationManager alloc] initWithSourceModel:self.fromMom destinationModel:toMom];
         XCTAssertNotNil(mm, @"Failed to create migration manager");
 
+        localURL = [self.localDir URLByAppendingPathComponent:[storeURL lastPathComponent]];
+
         XCTAssertTrue([mm migrateStoreFromURL:fromURL
                                          type:storeType
                                       options:nil
                              withMappingModel:mapMom
-                             toDestinationURL:storeURL
+                             toDestinationURL:localURL
                               destinationType:storeType
                            destinationOptions:nil
                                         error:&err],
@@ -182,6 +208,7 @@
         XCTAssertNil(err, @"error: %@", err);
     } else {
         storeURL = [NSURL URLWithString:self.primaryRemoteDatabaseName relativeToURL:rootURL];
+        localURL = [self.localDir URLByAppendingPathComponent:[storeURL lastPathComponent]];
     }
 
     _persistentStoreCoordinator =
@@ -194,7 +221,7 @@
 
     theStore = [_persistentStoreCoordinator addPersistentStoreWithType:storeType
                                                          configuration:nil
-                                                                   URL:storeURL
+                                                                   URL:localURL
                                                                options:options
                                                                  error:&err];
     XCTAssertNotNil(theStore, @"could not get theStore: %@", err);
@@ -289,14 +316,13 @@ static void setConflicts(NSArray *results, int conflictVal)
     self.managedObjectContext = nil;
     self.persistentStoreCoordinator = nil;
 
-    // remove the entire database directory
-    NSURL *dir = [CDTIncrementalStore localDir];
     NSFileManager *fm = [NSFileManager defaultManager];
     XCTAssertNotNil(fm, @"Could not get File Manager");
-    if (![fm removeItemAtURL:dir error:&err]) {
+    if (![fm removeItemAtURL:self.localDir error:&err]) {
         XCTAssertTrue(err.code != NSFileNoSuchFileError,
                       @"removal of database directory failed: %@", err);
     }
+    self.localDir = nil;
 }
 
 - (CDTISReplicator *)pushToURL:(NSURL *)url

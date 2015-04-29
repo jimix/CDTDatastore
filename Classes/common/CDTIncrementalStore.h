@@ -25,14 +25,6 @@ extern NSString *const CDTISException;
 + (NSString *)type;
 
 /**
- *  Returns URL to the local directory that the incremental databases shall be
- *  stored.
- *
- *  @return NSURL
- */
-+ (NSURL *)localDir;
-
-/**
  *  Returns an array of @ref CDTIncrementalStore objects associated with a
  *  @ref NSPersistentStoreCoordinator
  *
