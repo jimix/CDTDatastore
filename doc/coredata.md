@@ -46,7 +46,10 @@ following manner, using `+type` static method to identify the correct
 store type:
 
 ```objc
-NSURL *storeURL = [NSURL URLWithString:databaseURI];
+NSFileManager *fileManager = [NSFileManager defaultManager];
+NSURL *docDir = [[fileManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+NSString *databaseName = <* String that is the database name *>;
+NSURL *storeURL = [docDir URLByAppendingPathComponent:databaseName];
 NSString *myType = [CDTIncrementalStore type];
 NSPersistentStoreCoordinator *psc = ...
 [psc addPersistentStoreWithType:myType
@@ -56,13 +59,8 @@ NSPersistentStoreCoordinator *psc = ...
                           error:&error])];
 ```
 
-The last component of `databaseURI` should be the name of your
-database. If `databaseURI` has a host component, then that URL will be
-used to specify the remote database where push, pull and sync
-operations will target.
-
-> ***Note***: the remote database details can be defined later in your
-> code.
+> ***Note***: It is the responsibility of the caller to make sure that
+> the path to `docDir` exists.
 
 At this point you can use [Core Data] normally and your changes will
 be saved in the local `CDTDatastore` image.
@@ -82,6 +80,19 @@ is only one `CDTIncrementalStore` object then this is simply:
 NSArray *stores = [CDTIncrementalStore storesFromCoordinator:psc];
 // We know there is only one
 CDTIncrementalStore *myIS = [stores firstObject];
+```
+
+If there is more than one `CDTIncrementalStore` in `stores` then you
+can iterate over stores and compare the URL property.  Example:
+
+```objc
+CDTIncrementalStore *myIS;
+for (CDTIncrementalStore *mis in stores) {
+    if ([storeURL isEqual:mis.URL]) {
+        myIS = mis;
+        break;
+    }
+}
 ```
 
 ### Replication

@@ -17,6 +17,8 @@
  */
 static BOOL CDTISSupportBatchUpdates = YES;
 
+static NSString *CDTISDBString = @"cdtis_test";
+
 /*
  *  ##Start Ripoff:
  *  The following code segment, that creates a managed object model
@@ -187,6 +189,7 @@ Entry *MakeEntry(NSManagedObjectContext *moc)
 @property (nonatomic, strong) NSManagedObjectModel *managedObjectModel;
 @property (nonatomic, strong) NSManagedObjectContext *managedObjectContext;
 @property (nonatomic, strong) NSPersistentStoreCoordinator *persistentStoreCoordinator;
+@property (nonatomic, strong) NSURL *storeURL;
 
 @end
 
@@ -243,28 +246,21 @@ static void *ISContextProgress = &ISContextProgress;
         [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:[self managedObjectModel]];
 
     NSError *err = nil;
-    NSPersistentStore *theStore;
-
     NSString *storeType;
-    NSURL *storeURL;
 
     if (sql) {
         storeType = NSSQLiteStoreType;
-        NSURL *docDir =
-            [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
-                                                    inDomains:NSUserDomainMask] lastObject];
-        storeURL = [docDir URLByAppendingPathComponent:@"cdtis_test.sqlite"];
     } else {
         storeType = [CDTIncrementalStore type];
-        storeURL = [NSURL URLWithString:@"cdtis_test"];
     }
 
-    theStore = [_persistentStoreCoordinator addPersistentStoreWithType:storeType
-                                                         configuration:nil
-                                                                   URL:storeURL
-                                                               options:nil
-                                                                 error:&err];
+    NSPersistentStore *theStore = [_persistentStoreCoordinator addPersistentStoreWithType:storeType
+                                                                            configuration:nil
+                                                                                      URL:self.storeURL
+                                                                                  options:nil
+                                                                                    error:&err];
     XCTAssertNotNil(theStore, @"could not get theStore: %@", err);
+
     return _persistentStoreCoordinator;
 }
 
@@ -280,20 +276,19 @@ static void *ISContextProgress = &ISContextProgress;
     }
 
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSURL *storeURL;
 
+    NSURL *docDir = [[fm URLsForDirectory:NSDocumentDirectory
+                                inDomains:NSUserDomainMask] lastObject];
+    NSURL *storeURL = [docDir URLByAppendingPathComponent:CDTISDBString];
     if (sql) {
-        NSURL *docDir =
-            [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
-                                                    inDomains:NSUserDomainMask] lastObject];
-        storeURL = [docDir URLByAppendingPathComponent:@"cdtis_test.sqlite"];
-    } else {
-        // remove the entire database directory
-        storeURL = [CDTIncrementalStore localDir];
+        storeURL = [self.storeURL URLByAppendingPathExtension:@"sqlite"];
     }
 
-    NSError *err = nil;
-    if (![fm removeItemAtURL:storeURL error:&err]) {
+    self.storeURL = storeURL;
+
+    // kill the old one
+    NSError *err;
+    if (![fm removeItemAtURL:self.storeURL error:&err]) {
         if (err.code != NSFileNoSuchFileError) {
             XCTAssertNil(err, @"%@", err);
         }
@@ -1007,7 +1002,7 @@ static void *ISContextProgress = &ISContextProgress;
     NSManagedObjectContext *moc = self.managedObjectContext;
     XCTAssertNotNil(moc, @"could not create Context");
 
-    moc.stalenessInterval = 0; // no staleness acceptable
+    moc.stalenessInterval = 0;  // no staleness acceptable
 
     NSDate *now = [NSDate date];
 
@@ -1224,8 +1219,8 @@ static void *ISContextProgress = &ISContextProgress;
                       @"Failed to retain decimal max");
         XCTAssertTrue([minNums.fpDecimal isEqual:[NSDecimalNumber minimumDecimalNumber]],
                       @"Failed to retain decimal min");
-        XCTAssertTrue(
-                      [infNums.fpDecimal isEqual:(NSDecimalNumber *)[NSDecimalNumber numberWithDouble:INFINITY]],
+        XCTAssertTrue([infNums.fpDecimal
+                          isEqual:(NSDecimalNumber *)[NSDecimalNumber numberWithDouble:INFINITY]],
                       @"Failed to retain decimal infinity");
     }
 
