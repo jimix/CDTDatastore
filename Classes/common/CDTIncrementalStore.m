@@ -28,7 +28,6 @@
 @property (nonatomic, strong) CDTDatastore *datastore;
 @property (nonatomic, strong) CDTDatastoreManager *manager;
 @property (nonatomic, strong) NSURL *localURL;
-@property (nonatomic, strong) NSURL *remoteURL;
 @property (nonatomic, strong) CDTISObjectModel *objectModel;
 @property (nonatomic, strong) CDTReplicatorFactory *repFactory;
 
@@ -45,7 +44,7 @@ NSString *const CDTISErrorDomain = @"CDTIncrementalStoreDomain";
 NSString *const CDTISException = @"CDTIncrementalStoreException";
 
 static NSString *const CDTISType = @"CDTIncrementalStore";
-static NSString *const CDTISDirectory = @"cloudant-sync-datastore-incremental";
+static NSString *const CDTISDBName = @"cdtisdb";
 
 static NSString *const CDTISIdentifierKey = @"CDTISIdentifier";
 
@@ -96,11 +95,6 @@ static BOOL CDTISUpdateStoredObjectModel = NO;
 static BOOL CDTISCheckEntityVersions = NO;
 
 /**
- *  Fix given database name to fit backing store constraints
- */
-static BOOL CDTISFixUpDatabaseName = NO;
-
-/**
  *  Check for the exisitence of subentities that we may be ignorning
  */
 static BOOL CDTISCheckForSubEntities = NO;
@@ -146,16 +140,6 @@ static BOOL CDTISSupportBatchUpdates = YES;
 }
 
 + (NSString *)type { return CDTISType; }
-
-+ (NSURL *)localDir
-{
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSURL *documentsDir =
-        [[fileManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-    NSURL *dbDir = [documentsDir URLByAppendingPathComponent:CDTISDirectory];
-
-    return dbDir;
-}
 
 + (NSArray *)storesFromCoordinator:(NSPersistentStoreCoordinator *)coordinator
 {
@@ -248,55 +232,6 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
 {
     return
         [NSString stringWithFormat:@"%@://%@:****@%@/%@", url.scheme, url.user, url.host, url.path];
-}
-
-#pragma mark - File System
-/**
- *  Create a path to the directory for the local database
- *
- *  @param dirName Name of the directory
- *  @param error   error
- *
- *  @return The path
- */
-- (NSString *)pathToDBDirectory:(NSError **)error
-{
-    NSError *err = nil;
-
-    self.localURL = [[self class] localDir];
-    NSString *path = [self.localURL path];
-
-    BOOL isDir;
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    BOOL exists = [fileManager fileExistsAtPath:path isDirectory:&isDir];
-
-    if (exists) {
-        if (!isDir) {
-            NSString *s = [NSString localizedStringWithFormat:@"Can't create datastore directory: "
-                                                              @"file in the way at %@",
-                                                              self.localURL];
-            CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@", CDTISType, s);
-            if (error) {
-                NSDictionary *ui = @{NSLocalizedFailureReasonErrorKey : s};
-                *error =
-                    [NSError errorWithDomain:CDTISErrorDomain code:CDTISErrorBadPath userInfo:ui];
-            }
-            return nil;
-        }
-    } else {
-        if (![fileManager createDirectoryAtURL:self.localURL
-                   withIntermediateDirectories:YES
-                                    attributes:nil
-                                         error:&err]) {
-            CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: Error creating manager directory: %@",
-                        CDTISType, err);
-            if (error) {
-                *error = err;
-            }
-            return nil;
-        }
-    }
-    return path;
 }
 
 #pragma mark - property encode
@@ -1084,37 +1019,8 @@ static BOOL badObjectVersion(NSManagedObjectID *moid, NSDictionary *metadata)
                              versionPtr:version];
 }
 
-static NSString *fixupName(NSString *name)
-{
-    if (!CDTISFixUpDatabaseName) return name;
-
-    // http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
-    static NSString *kLegalChars = @"abcdefghijklmnopqrstuvwxyz0123456789_$()+-/";
-    static NSCharacterSet *kIllegalNameChars;
-    if (!kIllegalNameChars) {
-        kIllegalNameChars =
-            [[NSCharacterSet characterSetWithCharactersInString:kLegalChars] invertedSet];
-    }
-    NSMutableString *fix = [NSMutableString stringWithString:[name lowercaseString]];
-    // must start with a letter
-    NSUInteger first = [fix characterAtIndex:0];
-    if ('0' <= first && first <= '9') {
-        [fix insertString:@"db_" atIndex:0];
-    }
-    NSRange srch = NSMakeRange(0, [fix length]);
-    for (;;) {
-        NSRange r = [fix rangeOfCharacterFromSet:kIllegalNameChars options:0 range:srch];
-        if (r.location == NSNotFound) break;
-        [fix replaceCharactersInRange:r withString:@"_"];
-        NSUInteger l = r.location + r.length;
-        srch = NSMakeRange(l, [fix length] - l);
-    }
-    return [NSString stringWithString:fix];
-}
-
 /**
  *  Initialize database
- *  > *Note*: only does local right now
  *
  *  @param error Error
  *
@@ -1123,34 +1029,57 @@ static NSString *fixupName(NSString *name)
 - (BOOL)initializeDatabase:(NSError **)error
 {
     NSError *err = nil;
-
-    NSURL *remoteURL = [self URL];
+    NSURL *dir = [self URL];
+    NSString *path = [dir path];
 
     /**
-     *  At this point, we assume we are just a local store.
-     *  We use the last path component to name the database in the local
-     *  directory.
+     *  check if the directory exists, or needs to be created
      */
-    NSString *last = [remoteURL lastPathComponent];
-    NSString *databaseName = fixupName(last);
-    NSString *path = [self pathToDBDirectory:&err];
-    if (!path) {
-        if (error) *error = err;
-        return NO;
+    BOOL isDir;
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    BOOL exists = [fileManager fileExistsAtPath:path isDirectory:&isDir];
+    if (exists) {
+        if (!isDir) {
+            NSString *s =
+                [NSString localizedStringWithFormat:@"Can't create datastore directory: %@", dir];
+            CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@", CDTISType, s);
+            if (error) {
+                NSDictionary *ui = @{NSLocalizedFailureReasonErrorKey : s};
+                *error =
+                    [NSError errorWithDomain:CDTISErrorDomain code:CDTISErrorBadPath userInfo:ui];
+            }
+            return NO;
+        }
+    } else {
+        if (![fileManager createDirectoryAtURL:dir
+                   withIntermediateDirectories:YES
+                                    attributes:nil
+                                         error:&err]) {
+            CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: Error creating manager directory: %@",
+                        CDTISType, err);
+            if (error) {
+                *error = err;
+            }
+            return NO;
+        }
     }
-
+    /**
+     * The URL we are given is actually a directory.  The backing store is
+     * free to create as many files and subdirectories it needs.  So for an
+     * actual name we use something constatn and vanilla.
+     */
     CDTDatastoreManager *manager = [[CDTDatastoreManager alloc] initWithDirectory:path error:&err];
     if (!manager) {
-        CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: Error creating manager: %@", CDTISType,
-                    databaseName, err);
+        CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: Error creating manager: %@", CDTISType, dir,
+                    err);
         if (error) *error = err;
         return NO;
     }
 
-    CDTDatastore *datastore = [manager datastoreNamed:databaseName error:&err];
+    CDTDatastore *datastore = [manager datastoreNamed:CDTISDBName error:&err];
     if (!datastore) {
         CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: Error creating datastore: %@", CDTISType,
-                    databaseName, err);
+                    CDTISDBName, err);
         if (error) *error = err;
         return NO;
     }
@@ -1171,7 +1100,6 @@ static NSString *fixupName(NSString *name)
     }
 
     // Commit before setting up replication
-    self.databaseName = databaseName;
     self.datastore = datastore;
     self.manager = manager;
     self.repFactory = repFactory;
@@ -1222,7 +1150,7 @@ static NSDictionary *encodeVersionHashes(NSDictionary *hashes)
     if (!oldRev) {
         if (error) *error = err;
         CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: no metaData?: %@", CDTISType,
-                    self.databaseName, err);
+                    self.URL, err);
         return NO;
     }
     CDTMutableDocumentRevision *upRev = [oldRev mutableCopy];
@@ -1250,7 +1178,7 @@ static NSDictionary *encodeVersionHashes(NSDictionary *hashes)
     if (!upedRev) {
         if (error) *error = err;
         CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: could not update metadata: %@", CDTISType,
-                    self.databaseName, err);
+                    self.URL, err);
         return NO;
     }
 
@@ -1332,7 +1260,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
         if (!rev) {
             if (error) *error = err;
             CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: unable to store metaData: %@",
-                        CDTISType, self.databaseName, err);
+                        CDTISType, self.URL, err);
             return nil;
         }
 
@@ -1347,7 +1275,7 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
     CDTDocumentRevision *upedRev = [self.datastore updateDocumentFromRevision:upRev error:&err];
     if (!upedRev) {
         if (error) *error = err;
-        CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: upedRev: %@", CDTISType, self.databaseName,
+        CDTLogError(CDTDATASTORE_LOG_CONTEXT, @"%@: %@: upedRev: %@", CDTISType, self.URL,
                     err);
         return nil;
     }
@@ -1472,9 +1400,6 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
 #pragma mark - required methods
 - (BOOL)loadMetadata:(NSError **)error
 {
-    if (self.databaseName) {
-        return NO;
-    }
     if (![self initializeDatabase:error]) {
         return NO;
     }
