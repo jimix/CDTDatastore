@@ -1384,17 +1384,14 @@ NSDictionary *decodeCoreDataMeta(NSDictionary *storedMetaData)
                                            replicator:puller];
 }
 
-- (NSManagedObject *)managedObjectForEntityName:(NSString *)name
+- (NSManagedObjectID *)managedObjectIDForEntityName:(NSString *)name
                                 referenceObject:(NSString *)ref
-                                        context:(NSManagedObjectContext *)context
 {
     NSPersistentStoreCoordinator *psc = self.persistentStoreCoordinator;
     NSManagedObjectModel *mom = [psc managedObjectModel];
     NSEntityDescription *entity = [[mom entitiesByName] objectForKey:name];
     NSManagedObjectID *moid = [self newObjectIDForEntity:entity referenceObject:ref];
-
-    NSManagedObject *mo = [context objectWithID:moid];
-    return mo;
+    return moid;
 }
 
 #pragma mark - required methods

@@ -50,7 +50,7 @@
         self.conflicts[docId] = bySeq;
     }
 
-    // Resolve to the local one for now to keep things consistant
+    // Resolve to the remote one for now to keep things consistant
     return [bySeq lastObject];
 }
 
@@ -67,6 +67,18 @@
         NSNumber *vNum;
 
         CDTDocumentRevision *local = [conflicts objectAtIndex:0];
+        NSString *name = local.body[CDTISEntityNameKey];
+
+        NSManagedObjectID *moid =
+            [self.incrementalStore managedObjectIDForEntityName:name referenceObject:docID];
+        //        NSManagedObject *mo = [context objectWithID:moid];
+        NSManagedObject *mo = [context objectRegisteredForID:moid];
+        if (!mo) {
+            // if the object does not exist in the context then we should not
+            // report it
+            continue;
+        }
+
         vNum = local.body[CDTISObjectVersionKey];
         uint64_t localVersion = [vNum longLongValue];
         NSDictionary *localValues = [self.incrementalStore valuesFromDocumentBody:local.body
@@ -91,13 +103,6 @@
                 oops(@"bad remoteValues") return nil;
             }
         }
-
-        NSString *name = remote.body[CDTISEntityNameKey];
-        NSString *ref = remote.docId;
-
-        NSManagedObject *mo = [self.incrementalStore managedObjectForEntityName:name
-                                                                referenceObject:ref
-                                                                        context:context];
 
         NSMergeConflict *mc = [[NSMergeConflict alloc] initWithSource:mo
                                                            newVersion:(NSUInteger)remoteVersion

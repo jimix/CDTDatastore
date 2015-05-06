@@ -11,7 +11,6 @@
 
 #import "CDTISReplicator.h"
 
-
 extern NSString *const CDTISErrorDomain;
 extern NSString *const CDTISException;
 
@@ -72,9 +71,16 @@ typedef NS_ENUM(NSInteger, CDTIncrementalStoreErrors) {
                              withContext:(NSManagedObjectContext *)context
                               versionPtr:(uint64_t *)version;
 
-- (NSManagedObject *)managedObjectForEntityName:(NSString *)name
-                                referenceObject:(NSString *)ref
-                                        context:(NSManagedObjectContext *)context;
+/**
+ *  Get the Managed Object ID
+ *
+ *  @param name The name of the Entity
+ *  @param ref  The object ref
+ *
+ *  @return The Object ID, may return nil if the either parameter does not exist
+ */
+- (NSManagedObjectID *)managedObjectIDForEntityName:(NSString *)name
+                                    referenceObject:(NSString *)ref;
 
 /**
  * Create a CDTReplicator object set up to replicate changes from the
