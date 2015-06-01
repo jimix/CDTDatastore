@@ -1,3 +1,15 @@
+# CDTIncrementalStore
+
+***For various the `CDTIncrementalStore` project has been spun off
+into its own cocoapod'able project. The current work can be found at
+the following places:***
+- **github**: https://github.com/jimix/CDTIncrementalStore
+- **cocoapods**: https://cocoapods.org/pods/CDTIncrementalStore
+
+
+
+
+
 # CDTDatastore
 
 [![Version](http://cocoapod-badges.herokuapp.com/v/CDTDatastore/badge.png)](http://cocoadocs.org/docsets/CDTDatastore)
